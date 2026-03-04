@@ -391,9 +391,8 @@ func (cs *CareerShowScreen) finishShow(g *Game) {
 
 func (cs *CareerShowScreen) Update(g *Game) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		// Save and return to career dashboard
-		loader.SaveCareer(g.Store, cs.career)
-		g.SetScreen(NewCareerScreen(cs.career))
+		// Go back to booking screen so user can resume or change options
+		g.SetScreen(NewCareerBookScreen(cs.career, cs.card, g))
 		return nil
 	}
 

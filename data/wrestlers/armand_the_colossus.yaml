@@ -1,0 +1,64 @@
+name: "Armand the Colossus"
+
+offense:
+  # Level 1
+  - - { name: "Headbutt", power: 1, def_level: 1 }
+    - { name: "Bear Hug", power: 1, def_level: 1 }
+    - { name: "Choke", power: 1, def_level: 1, tags: ["dis"] }
+    - { name: "Body Slam", power: 2, def_level: 2, tags: ["pw"] }
+    - { name: "Into the Ropes", power: 2, def_level: 1, tags: ["chart"], chart: "ropes" }
+    - { name: "Big Boot", power: 2, def_level: 2 }
+  # Level 2
+  - - { name: "Avalanche Splash", power: 2, def_level: 2 }
+    - { name: "Double Underhook Suplex", power: 2, def_level: 2 }
+    - { name: "Into the Turnbuckle", power: 2, def_level: 2, tags: ["chart"], chart: "turnbuckle" }
+    - { name: "Sit Down Splash", power: 3, def_level: 3, tags: ["add1"] }
+    - { name: "Chokehold", power: 2, def_level: 2, tags: ["dis"] }
+    - { name: "Gorilla Press", power: 3, def_level: 3, tags: ["pw"] }
+  # Level 3
+  - - { name: "Elbow Drop", power: 3, def_level: 3 }
+    - { name: "Big Splash", power: 3, def_level: 3 }
+    - { name: "Out of the Ring", power: 3, def_level: 3, tags: ["chart"], chart: "ring" }
+    - { name: "Tombstone Piledriver", power: 3, def_level: 3 }
+    - { name: "Choice", power: 3, def_level: 3, tags: ["ch"], choice: "G" }
+    - { name: "COLOSSUS CRUSH", power: 3, def_level: 3 }
+
+defense:
+  # Level 1 Defense
+  - - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "dazed", power: 1 }
+  # Level 2 Defense
+  - - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 2 }
+    - { type: "reversal", power: 2 }
+    - { type: "hurt", power: 2 }
+    - { type: "dazed", power: 2 }
+    - { type: "hurt", power: 2 }
+  # Level 3 Defense
+  - - { type: "reversal", power: 2 }
+    - { type: "hurt", power: 3 }
+    - { type: "down", power: 3 }
+    - { type: "reversal", power: 3 }
+    - { type: "pin", power: 3, pin_threshold: 7 }
+    - { type: "down", power: 3 }
+
+ropes: "A"
+turnbuckle: "A"
+ring: "A"
+deathjump: "C"
+
+pin: 7
+pin_adv: 4
+cage: 6
+dq: 3
+agility: -3
+power: 5
+distractor: 5
+
+finisher:
+  name: "COLOSSUS CRUSH"
+  rating: 2

@@ -1,0 +1,64 @@
+name: "Rex Fontaine"
+
+offense:
+  # Level 1
+  - - { name: "Knife Edge Chop", power: 1, def_level: 1 }
+    - { name: "Wrist Lock", power: 1, def_level: 1 }
+    - { name: "Snapmare", power: 1, def_level: 1 }
+    - { name: "Into the Ropes", power: 2, def_level: 1, tags: ["chart"], chart: "ropes" }
+    - { name: "Shin Breaker", power: 2, def_level: 2 }
+    - { name: "Chop Block", power: 2, def_level: 2 }
+  # Level 2
+  - - { name: "Knee Crusher", power: 2, def_level: 2 }
+    - { name: "Suplex", power: 2, def_level: 2 }
+    - { name: "Into the Turnbuckle", power: 2, def_level: 2, tags: ["chart"], chart: "turnbuckle" }
+    - { name: "Choice", power: 2, def_level: 2, tags: ["ch"], choice: "E" }
+    - { name: "Low Blow", power: 3, def_level: 3, tags: ["dis"] }
+    - { name: "Belly to Back Suplex", power: 3, def_level: 3, tags: ["add1"] }
+  # Level 3
+  - - { name: "Knee Drop", power: 3, def_level: 3 }
+    - { name: "Rolling Knee Bar", power: 3, def_level: 3 }
+    - { name: "Out of the Ring", power: 3, def_level: 3, tags: ["chart"], chart: "ring" }
+    - { name: "Vertical Suplex", power: 3, def_level: 3 }
+    - { name: "Back Body Drop", power: 3, def_level: 3 }
+    - { name: "FONTAINE STRETCH", power: 3, def_level: 3 }
+
+defense:
+  # Level 1 Defense
+  - - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 2 }
+    - { type: "dazed", power: 1 }
+  # Level 2 Defense
+  - - { type: "dazed", power: 2 }
+    - { type: "reversal", power: 1 }
+    - { type: "hurt", power: 2 }
+    - { type: "reversal", power: 2 }
+    - { type: "hurt", power: 2 }
+    - { type: "down", power: 3 }
+  # Level 3 Defense
+  - - { type: "hurt", power: 3 }
+    - { type: "reversal", power: 2 }
+    - { type: "down", power: 3, tags: ["lv"] }
+    - { type: "down", power: 3 }
+    - { type: "pin", power: 3, pin_threshold: 5 }
+    - { type: "reversal", power: 3 }
+
+ropes: "B"
+turnbuckle: "B"
+ring: "B"
+deathjump: "C"
+
+pin: 5
+pin_adv: 2
+cage: 5
+dq: 5
+agility: 1
+power: 0
+distractor: 6
+
+finisher:
+  name: "FONTAINE STRETCH"
+  rating: 4

@@ -1,0 +1,64 @@
+name: "The Gravedigger"
+
+offense:
+  # Level 1
+  - - { name: "Chokeslam", power: 1, def_level: 1 }
+    - { name: "Old School", power: 1, def_level: 1 }
+    - { name: "Snake Eyes", power: 1, def_level: 1 }
+    - { name: "Into the Ropes", power: 2, def_level: 1, tags: ["chart"], chart: "ropes" }
+    - { name: "Boot to Face", power: 2, def_level: 2 }
+    - { name: "Sit-up Clothesline", power: 2, def_level: 2 }
+  # Level 2
+  - - { name: "Big Boot", power: 2, def_level: 2, tags: ["pw"] }
+    - { name: "Into the Turnbuckle", power: 2, def_level: 2, tags: ["chart"], chart: "turnbuckle" }
+    - { name: "Throat Thrust", power: 2, def_level: 2 }
+    - { name: "Choice", power: 2, def_level: 2, tags: ["ch"], choice: "G" }
+    - { name: "Out of the Ring", power: 3, def_level: 3, tags: ["chart"], chart: "ring" }
+    - { name: "Last Ride Powerbomb", power: 3, def_level: 3, tags: ["add1"] }
+  # Level 3
+  - - { name: "Leg Drop", power: 3, def_level: 3 }
+    - { name: "Running DDT", power: 3, def_level: 3 }
+    - { name: "Chokeslam from Hell", power: 3, def_level: 3, tags: ["pw"] }
+    - { name: "Flying Clothesline", power: 3, def_level: 3, tags: ["add1"] }
+    - { name: "Diving Old School", power: 3, def_level: 3 }
+    - { name: "GRAVE PLUNGE", power: 3, def_level: 3 }
+
+defense:
+  # Level 1 Defense
+  - - { type: "reversal", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+  # Level 2 Defense
+  - - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 2 }
+    - { type: "reversal", power: 2 }
+    - { type: "dazed", power: 2 }
+    - { type: "hurt", power: 2 }
+    - { type: "reversal", power: 2 }
+  # Level 3 Defense
+  - - { type: "reversal", power: 2 }
+    - { type: "hurt", power: 3 }
+    - { type: "reversal", power: 3 }
+    - { type: "down", power: 3, tags: ["lv"] }
+    - { type: "pin", power: 3, pin_threshold: 7 }
+    - { type: "down", power: 3 }
+
+ropes: "A"
+turnbuckle: "B"
+ring: "A"
+deathjump: "B"
+
+pin: 6
+pin_adv: 4
+cage: 5
+dq: 3
+agility: -1
+power: 4
+distractor: 5
+
+finisher:
+  name: "GRAVE PLUNGE"
+  rating: 3

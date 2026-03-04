@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ring Wars</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #101010;
+            overflow: hidden;
+            height: 100%;
+        }
+        #game {
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <script src="wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("wrestling.wasm"), go.importObject)
+            .then(result => go.run(result.instance));
+    </script>
+</body>
+</html>

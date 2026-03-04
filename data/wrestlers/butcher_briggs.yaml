@@ -1,0 +1,64 @@
+name: "Butcher Briggs"
+
+offense:
+  # Level 1
+  - - { name: "Headlock", power: 1, def_level: 1 }
+    - { name: "Body Slam", power: 1, def_level: 1 }
+    - { name: "Arm Wringer", power: 1, def_level: 1 }
+    - { name: "Knee Drop", power: 2, def_level: 2 }
+    - { name: "Into the Ropes", power: 2, def_level: 1, tags: ["chart"], chart: "ropes" }
+    - { name: "Clothesline", power: 2, def_level: 2 }
+  # Level 2
+  - - { name: "Piledriver", power: 2, def_level: 2 }
+    - { name: "Big Boot", power: 2, def_level: 2, tags: ["pw"] }
+    - { name: "Into the Turnbuckle", power: 2, def_level: 2, tags: ["chart"], chart: "turnbuckle" }
+    - { name: "Chair Shot", power: 2, def_level: 2, tags: ["dis"] }
+    - { name: "Running Knee Lift", power: 3, def_level: 3 }
+    - { name: "Backbreaker", power: 3, def_level: 3, tags: ["add1"] }
+  # Level 3
+  - - { name: "Lariat", power: 3, def_level: 3 }
+    - { name: "Running Powerslam", power: 3, def_level: 3 }
+    - { name: "King Kong Knee Drop", power: 3, def_level: 3 }
+    - { name: "Out of the Ring", power: 3, def_level: 3, tags: ["chart"], chart: "ring" }
+    - { name: "Choice", power: 3, def_level: 3, tags: ["ch"], choice: "F" }
+    - { name: "BUTCHER BOMB", power: 3, def_level: 3 }
+
+defense:
+  # Level 1 Defense
+  - - { type: "dazed", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "hurt", power: 2 }
+    - { type: "dazed", power: 1 }
+  # Level 2 Defense
+  - - { type: "hurt", power: 2 }
+    - { type: "reversal", power: 2 }
+    - { type: "dazed", power: 2 }
+    - { type: "hurt", power: 2 }
+    - { type: "down", power: 3 }
+    - { type: "reversal", power: 1 }
+  # Level 3 Defense
+  - - { type: "down", power: 3 }
+    - { type: "hurt", power: 3 }
+    - { type: "reversal", power: 2 }
+    - { type: "down", power: 3, tags: ["lv"] }
+    - { type: "pin", power: 3, pin_threshold: 6 }
+    - { type: "down", power: 3 }
+
+ropes: "B"
+turnbuckle: "B"
+ring: "A"
+deathjump: "B"
+
+pin: 5
+pin_adv: 3
+cage: 4
+dq: 4
+agility: -1
+power: 4
+distractor: 5
+
+finisher:
+  name: "BUTCHER BOMB"
+  rating: 3

@@ -1,0 +1,64 @@
+name: "Ricky Rampage"
+
+offense:
+  # Level 1
+  - - { name: "Double Axe Handle", power: 1, def_level: 1 }
+    - { name: "Flying Knee", power: 1, def_level: 1 }
+    - { name: "Elbow Smash", power: 1, def_level: 1 }
+    - { name: "Into the Ropes", power: 2, def_level: 1, tags: ["chart"], chart: "ropes" }
+    - { name: "Suplex", power: 2, def_level: 2 }
+    - { name: "Clothesline", power: 2, def_level: 2 }
+  # Level 2
+  - - { name: "Into the Turnbuckle", power: 2, def_level: 2, tags: ["chart"], chart: "turnbuckle" }
+    - { name: "Piledriver", power: 2, def_level: 2 }
+    - { name: "Choice", power: 2, def_level: 2, tags: ["ch"], choice: "H" }
+    - { name: "Running Elbow", power: 2, def_level: 2 }
+    - { name: "Deathjump", power: 3, def_level: 3, tags: ["chart"], chart: "deathjump" }
+    - { name: "Top Rope Axe Handle", power: 3, def_level: 3, tags: ["add1"] }
+  # Level 3
+  - - { name: "Diving Clothesline", power: 3, def_level: 3 }
+    - { name: "Hot Shot", power: 3, def_level: 3 }
+    - { name: "Snap Suplex", power: 3, def_level: 3 }
+    - { name: "Throat Thrust", power: 3, def_level: 3 }
+    - { name: "Scoop Slam", power: 3, def_level: 3 }
+    - { name: "RAMPAGE ELBOW", power: 3, def_level: 3 }
+
+defense:
+  # Level 1 Defense
+  - - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 1 }
+    - { type: "dazed", power: 1 }
+    - { type: "reversal", power: 2 }
+    - { type: "dazed", power: 1 }
+  # Level 2 Defense
+  - - { type: "dazed", power: 2 }
+    - { type: "reversal", power: 1 }
+    - { type: "hurt", power: 2 }
+    - { type: "reversal", power: 2 }
+    - { type: "hurt", power: 2 }
+    - { type: "down", power: 3 }
+  # Level 3 Defense
+  - - { type: "hurt", power: 3 }
+    - { type: "reversal", power: 2 }
+    - { type: "down", power: 3, tags: ["lv"] }
+    - { type: "down", power: 3 }
+    - { type: "pin", power: 3, pin_threshold: 5 }
+    - { type: "reversal", power: 3 }
+
+ropes: "B"
+turnbuckle: "A"
+ring: "B"
+deathjump: "A"
+
+pin: 5
+pin_adv: 3
+cage: 5
+dq: 4
+agility: 2
+power: 1
+distractor: 6
+
+finisher:
+  name: "RAMPAGE ELBOW"
+  rating: 4

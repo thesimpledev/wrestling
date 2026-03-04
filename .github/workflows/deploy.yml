@@ -32,6 +32,9 @@ jobs:
       - name: Copy wasm_exec.js
         run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/web/
 
+      - name: Cache-bust
+        run: sed -i "s/__BUILD_VERSION__/${{ github.sha }}/" dist/web/index.html
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

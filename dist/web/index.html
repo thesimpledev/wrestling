@@ -22,7 +22,8 @@
     <script src="wasm_exec.js"></script>
     <script>
         const go = new Go();
-        WebAssembly.instantiateStreaming(fetch("wrestling.wasm"), go.importObject)
+        const v = "__BUILD_VERSION__";
+        WebAssembly.instantiateStreaming(fetch("wrestling.wasm?v=" + v), go.importObject)
             .then(result => go.run(result.instance));
     </script>
 </body>

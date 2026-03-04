@@ -158,36 +158,30 @@ func (m *MenuScreen) Update(g *Game) error {
 	case PhaseSelectWrestler2:
 		m.cursor = handleListInput(m.cursor, len(g.Roster))
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-			if !m.isSelected(m.cursor) {
-				m.selected[1] = m.cursor
-				if m.matchType == engine.MatchTag {
-					m.phase = PhaseSelectWrestler3
-				} else {
-					// For non-tag matches, go to ally selection
-					m.phase = PhaseSelectAlly1
-				}
-				m.cursor = 0
+			m.selected[1] = m.cursor
+			if m.matchType == engine.MatchTag {
+				m.phase = PhaseSelectWrestler3
+			} else {
+				// For non-tag matches, go to ally selection
+				m.phase = PhaseSelectAlly1
 			}
+			m.cursor = 0
 		}
 
 	case PhaseSelectWrestler3:
 		m.cursor = handleListInput(m.cursor, len(g.Roster))
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-			if !m.isSelected(m.cursor) {
-				m.selected[2] = m.cursor
-				m.phase = PhaseSelectWrestler4
-				m.cursor = 0
-			}
+			m.selected[2] = m.cursor
+			m.phase = PhaseSelectWrestler4
+			m.cursor = 0
 		}
 
 	case PhaseSelectWrestler4:
 		m.cursor = handleListInput(m.cursor, len(g.Roster))
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-			if !m.isSelected(m.cursor) {
-				m.selected[3] = m.cursor
-				m.phase = PhaseReady
-				m.cursor = 0
-			}
+			m.selected[3] = m.cursor
+			m.phase = PhaseReady
+			m.cursor = 0
 		}
 
 	case PhaseSelectAlly1:

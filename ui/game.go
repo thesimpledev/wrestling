@@ -5,15 +5,16 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
 	"wrestling/loader"
 	"wrestling/storage"
 )
 
 const (
+	Version      = "0.1.0"
 	WindowWidth  = 1280
 	WindowHeight = 720
-	Scale        = 2
 	CharWidth    = 6
 	LineHeight   = 16
 	Margin       = 8
@@ -33,6 +34,7 @@ type Game struct {
 	screen   Screen
 	screenW  int
 	screenH  int
+	scale    int
 	Roster   []*engine.WrestlerCard
 	Store    storage.Store
 	Injuries loader.InjuryStore
@@ -42,6 +44,7 @@ func NewGame(roster []*engine.WrestlerCard, store storage.Store) *Game {
 	g := &Game{
 		Roster:   roster,
 		Store:    store,
+		scale:    2,
 		Injuries: loader.LoadInjuries(store),
 	}
 	g.screen = NewMenuScreen()
@@ -53,6 +56,13 @@ func (g *Game) SetScreen(s Screen) {
 }
 
 func (g *Game) Update() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		if g.scale == 2 {
+			g.scale = 1
+		} else {
+			g.scale = 2
+		}
+	}
 	return g.screen.Update(g)
 }
 
@@ -63,7 +73,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return outsideWidth / Scale, outsideHeight / Scale
+	return outsideWidth / g.scale, outsideHeight / g.scale
 }
 
 // DrawText is a helper to draw a line at a position.

@@ -19,15 +19,17 @@ const (
 	PhaseSelectAlly1     // Optional ally for side 1
 	PhaseSelectAlly2     // Optional ally for side 2
 	PhaseReady
+	PhaseMultiSelect // Battle Royal: pick 3+ wrestlers
 )
 
 type MenuScreen struct {
-	phase     MenuPhase
-	cursor    int
-	selected  [4]int // Up to 4 wrestler indices
-	allies    [2]int // Ally indices for each side (-1 = no ally)
-	matchType engine.MatchType
-	isFeud    bool
+	phase       MenuPhase
+	cursor      int
+	selected    [4]int // Up to 4 wrestler indices
+	allies      [2]int // Ally indices for each side (-1 = no ally)
+	matchType   engine.MatchType
+	isFeud      bool
+	multiSelect []bool // For battle royal multi-select
 }
 
 func NewMenuScreen() *MenuScreen {
@@ -43,6 +45,8 @@ var menuOptions = []string{
 	"Cage Match",
 	"No DQ Match",
 	"Feud Match",
+	"Battle Royal",
+	"Tournament",
 	"Create New Card",
 	"Edit Existing Card",
 }
@@ -55,13 +59,15 @@ var matchTypes = []engine.MatchType{
 }
 
 const (
-	menuSingles  = 0
-	menuTag      = 1
-	menuCage     = 2
-	menuNoDQ     = 3
-	menuFeud     = 4
-	menuNewCard  = 5
-	menuEditCard = 6
+	menuSingles    = 0
+	menuTag        = 1
+	menuCage       = 2
+	menuNoDQ       = 3
+	menuFeud       = 4
+	menuBattleRoyal = 5
+	menuTournament = 6
+	menuNewCard    = 7
+	menuEditCard   = 8
 )
 
 func (m *MenuScreen) isSelected(idx int) bool {
@@ -81,6 +87,11 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 		// Navigate back through phases, clearing the selection we're returning to
 		switch m.phase {
+		case PhaseMultiSelect:
+			m.multiSelect = nil
+			m.phase = PhaseSelectMatchType
+			m.cursor = 0
+			return nil
 		case PhaseSelectAlly2:
 			m.allies[1] = -1
 			m.phase = PhaseSelectAlly1
@@ -117,6 +128,14 @@ func (m *MenuScreen) Update(g *Game) error {
 		m.cursor = handleListInput(m.cursor, len(menuOptions))
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			switch m.cursor {
+			case menuBattleRoyal:
+				m.phase = PhaseMultiSelect
+				m.cursor = 0
+				m.multiSelect = make([]bool, len(g.Roster))
+				return nil
+			case menuTournament:
+				g.SetScreen(NewTournamentScreen(g))
+				return nil
 			case menuNewCard:
 				g.SetScreen(NewCardEditorScreen(nil))
 				return nil
@@ -209,6 +228,24 @@ func (m *MenuScreen) Update(g *Game) error {
 			m.cursor = 0
 		}
 
+	case PhaseMultiSelect:
+		m.cursor = handleListInput(m.cursor, len(g.Roster))
+		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			m.multiSelect[m.cursor] = !m.multiSelect[m.cursor]
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			var picks []*engine.WrestlerCard
+			for i, sel := range m.multiSelect {
+				if sel {
+					picks = append(picks, g.Roster[i])
+				}
+			}
+			if len(picks) >= 3 {
+				g.SetScreen(NewBattleRoyalScreen(picks, g))
+				return nil
+			}
+		}
+
 	case PhaseReady:
 		if m.matchType == engine.MatchTag {
 			match := engine.NewTagMatch(
@@ -246,7 +283,7 @@ func (m *MenuScreen) Draw(screen *ebiten.Image, g *Game) {
 
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight
-	DrawText(screen, "                      RING WARS", Margin, y)
+	DrawText(screen, fmt.Sprintf("                   RING WARS v%s", Version), Margin, y)
 	y += LineHeight
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight * 2
@@ -318,10 +355,38 @@ func (m *MenuScreen) Draw(screen *ebiten.Image, g *Game) {
 		DrawText(screen, "SELECT RINGSIDE ALLY FOR WRESTLER 2 (optional):", Margin, y)
 		y += LineHeight * 2
 		m.drawAllyList(screen, g, y)
+
+	case PhaseMultiSelect:
+		DrawText(screen, "BATTLE ROYAL — SELECT WRESTLERS (min 3):", Margin, y)
+		y += LineHeight * 2
+		count := 0
+		for i, card := range g.Roster {
+			prefix := "  "
+			if i == m.cursor {
+				prefix = "> "
+			}
+			check := "[ ]"
+			if m.multiSelect[i] {
+				check = "[x]"
+				count++
+			}
+			name := card.Name
+			if g.Injuries.IsInjured(card.Name) {
+				name += fmt.Sprintf("  [INJURED %d]", g.Injuries.InjuryCards(card.Name))
+			}
+			DrawText(screen, fmt.Sprintf("%s%s %s", prefix, check, name), Margin, y)
+			y += LineHeight
+		}
+		y += LineHeight
+		DrawText(screen, fmt.Sprintf("Selected: %d", count), Margin, y)
 	}
 
 	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Back", Margin, statusY)
+	if m.phase == PhaseMultiSelect {
+		DrawText(screen, "[UP/DOWN] Move  [SPACE] Toggle  [ENTER] Confirm  [ESC] Back", Margin, statusY)
+	} else {
+		DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Back", Margin, statusY)
+	}
 }
 
 func (m *MenuScreen) drawSelectedSoFar(screen *ebiten.Image, g *Game, y *int) {

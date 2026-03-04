@@ -2,6 +2,8 @@
 
 A DOS-style wrestling match simulator built with Go and Ebitengine. Input wrestler cards and watch simulated matches play out with dramatic text commentary.
 
+Compatible with Filsinger Games card systems including Champions of the Galaxy and Legends of Wrestling. Ring Wars is not affiliated with or endorsed by Filsinger Games.
+
 ## Requirements
 
 - Go 1.21 or later

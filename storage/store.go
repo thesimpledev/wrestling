@@ -14,4 +14,11 @@ type Store interface {
 
 	// SaveInjuriesJSON persists the injury store as JSON bytes.
 	SaveInjuriesJSON(data []byte) error
+
+	// LoadCareerJSON returns the raw JSON bytes for the career save.
+	// Returns nil, nil if no career data exists yet.
+	LoadCareerJSON() ([]byte, error)
+
+	// SaveCareerJSON persists the career save as JSON bytes.
+	SaveCareerJSON(data []byte) error
 }

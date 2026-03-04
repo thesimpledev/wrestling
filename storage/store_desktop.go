@@ -61,3 +61,19 @@ func (s *DesktopStore) LoadInjuriesJSON() ([]byte, error) {
 func (s *DesktopStore) SaveInjuriesJSON(data []byte) error {
 	return os.WriteFile(s.injuriesPath(), data, 0644)
 }
+
+func (s *DesktopStore) careerPath() string {
+	return filepath.Join(s.dataDir, "..", "career.json")
+}
+
+func (s *DesktopStore) LoadCareerJSON() ([]byte, error) {
+	data, err := os.ReadFile(s.careerPath())
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return data, err
+}
+
+func (s *DesktopStore) SaveCareerJSON(data []byte) error {
+	return os.WriteFile(s.careerPath(), data, 0644)
+}

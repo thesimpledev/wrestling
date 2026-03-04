@@ -14,6 +14,7 @@ const (
 	cardPrefix  = "wrestling_card:"
 	injuriesKey = "wrestling_injuries"
 	cardListKey = "wrestling_card_list"
+	careerKey   = "wrestling_career"
 )
 
 // WASMStore reads/writes wrestler cards and injuries using browser localStorage.
@@ -110,5 +111,18 @@ func (s *WASMStore) LoadInjuriesJSON() ([]byte, error) {
 
 func (s *WASMStore) SaveInjuriesJSON(data []byte) error {
 	s.localStorage().Call("setItem", injuriesKey, string(data))
+	return nil
+}
+
+func (s *WASMStore) LoadCareerJSON() ([]byte, error) {
+	val := s.localStorage().Call("getItem", careerKey)
+	if val.IsNull() {
+		return nil, nil
+	}
+	return []byte(val.String()), nil
+}
+
+func (s *WASMStore) SaveCareerJSON(data []byte) error {
+	s.localStorage().Call("setItem", careerKey, string(data))
 	return nil
 }

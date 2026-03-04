@@ -73,6 +73,17 @@ func (m *MenuScreen) isSelected(idx int) bool {
 	return false
 }
 
+// allyEligible returns roster indices that are not already selected as match participants.
+func (m *MenuScreen) allyEligible(rosterLen int) []int {
+	var eligible []int
+	for i := 0; i < rosterLen; i++ {
+		if !m.isSelected(i) {
+			eligible = append(eligible, i)
+		}
+	}
+	return eligible
+}
+
 func (m *MenuScreen) Update(g *Game) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if m.phase == PhaseSelectMatchType {
@@ -174,25 +185,27 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 
 	case PhaseSelectAlly1:
+		eligible := m.allyEligible(len(g.Roster))
 		// +1 for "No Ally" option at top
-		m.cursor = handleListInput(m.cursor, len(g.Roster)+1)
+		m.cursor = handleListInput(m.cursor, len(eligible)+1)
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			if m.cursor == 0 {
 				m.allies[0] = -1 // No ally
 			} else {
-				m.allies[0] = m.cursor - 1
+				m.allies[0] = eligible[m.cursor-1]
 			}
 			m.phase = PhaseSelectAlly2
 			m.cursor = 0
 		}
 
 	case PhaseSelectAlly2:
-		m.cursor = handleListInput(m.cursor, len(g.Roster)+1)
+		eligible := m.allyEligible(len(g.Roster))
+		m.cursor = handleListInput(m.cursor, len(eligible)+1)
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			if m.cursor == 0 {
 				m.allies[1] = -1
 			} else {
-				m.allies[1] = m.cursor - 1
+				m.allies[1] = eligible[m.cursor-1]
 			}
 			m.phase = PhaseReady
 			m.cursor = 0
@@ -373,13 +386,14 @@ func (m *MenuScreen) drawAllyList(screen *ebiten.Image, g *Game, y int) {
 	DrawText(screen, prefix+"No Ally", Margin, y)
 	y += LineHeight
 
-	// Then roster
-	for i, card := range g.Roster {
+	// Only show wrestlers not already in the match
+	eligible := m.allyEligible(len(g.Roster))
+	for i, rosterIdx := range eligible {
 		prefix := "  "
 		if i+1 == m.cursor {
 			prefix = "> "
 		}
-		DrawText(screen, prefix+card.Name, Margin, y)
+		DrawText(screen, prefix+g.Roster[rosterIdx].Name, Margin, y)
 		y += LineHeight
 	}
 }

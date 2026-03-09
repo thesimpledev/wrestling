@@ -87,3 +87,18 @@ func reloadRoster(g *Game) {
 		g.Roster = roster
 	}
 }
+
+// FilterRoster returns only the wrestlers whose names are in the given list.
+func FilterRoster(full []*engine.WrestlerCard, names []string) []*engine.WrestlerCard {
+	nameSet := make(map[string]bool, len(names))
+	for _, n := range names {
+		nameSet[n] = true
+	}
+	var filtered []*engine.WrestlerCard
+	for _, w := range full {
+		if nameSet[w.Name] {
+			filtered = append(filtered, w)
+		}
+	}
+	return filtered
+}

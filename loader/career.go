@@ -6,22 +6,26 @@ import (
 	"wrestling/storage"
 )
 
-// LoadCareer reads career save data from the store.
-// Returns nil if no career data exists.
-func LoadCareer(store storage.Store) *engine.CareerSave {
+// LoadFederations reads federation save data from the store.
+// Returns nil if no data exists.
+func LoadFederations(store storage.Store) *engine.FederationSave {
 	data, err := store.LoadCareerJSON()
 	if err != nil || data == nil {
 		return nil
 	}
-	var save engine.CareerSave
-	if err := json.Unmarshal(data, &save); err != nil {
+
+	var fs engine.FederationSave
+	if err := json.Unmarshal(data, &fs); err != nil {
 		return nil
 	}
-	return &save
+	if len(fs.Federations) == 0 {
+		return nil
+	}
+	return &fs
 }
 
-// SaveCareer writes career data to the store.
-func SaveCareer(store storage.Store, save *engine.CareerSave) error {
+// SaveFederations writes federation data to the store.
+func SaveFederations(store storage.Store, save *engine.FederationSave) error {
 	data, err := json.MarshalIndent(save, "", "  ")
 	if err != nil {
 		return err

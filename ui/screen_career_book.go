@@ -19,22 +19,24 @@ const (
 )
 
 type CareerBookScreen struct {
-	career *engine.CareerSave
+	fed    *engine.Federation
+	save   *engine.FederationSave
 	card   []engine.BookedMatch
 	cursor int
 	phase  BookPhase
 
 	// Edit state
-	editIdx      int
-	editCursor   int
-	roster       []*engine.WrestlerCard
+	editIdx    int
+	editCursor int
+	roster     []*engine.WrestlerCard
 }
 
-func NewCareerBookScreen(career *engine.CareerSave, card []engine.BookedMatch, g *Game) *CareerBookScreen {
+func NewCareerBookScreen(fed *engine.Federation, save *engine.FederationSave, card []engine.BookedMatch, g *Game) *CareerBookScreen {
 	return &CareerBookScreen{
-		career: career,
+		fed:    fed,
+		save:   save,
 		card:   card,
-		roster: g.Roster,
+		roster: FilterRoster(g.Roster, fed.Roster),
 	}
 }
 
@@ -44,7 +46,7 @@ func (bs *CareerBookScreen) Update(g *Game) error {
 			bs.phase = BookViewCard
 			return nil
 		}
-		g.SetScreen(NewCareerScreen(bs.career))
+		g.SetScreen(NewCareerScreen(bs.fed, bs.save))
 		return nil
 	}
 
@@ -77,11 +79,11 @@ func (bs *CareerBookScreen) updateViewCard(g *Game) {
 			actionIdx := bs.cursor - len(bs.card)
 			switch actionIdx {
 			case 0: // Watch All
-				g.SetScreen(NewCareerShowScreen(bs.career, bs.card, ShowModeWatch, g))
+				g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, ShowModeWatch, g))
 			case 1: // Simulate All
-				g.SetScreen(NewCareerShowScreen(bs.career, bs.card, ShowModeSimulate, g))
+				g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, ShowModeSimulate, g))
 			case 2: // Watch Main Event Only
-				g.SetScreen(NewCareerShowScreen(bs.career, bs.card, ShowModeMainEvent, g))
+				g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, ShowModeMainEvent, g))
 			}
 		}
 	}
@@ -106,7 +108,6 @@ func (bs *CareerBookScreen) updateEditType(g *Game) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		match := &bs.card[bs.editIdx]
 		match.Type = editableTypes[bs.editCursor]
-		// For tag, ensure 2 per side
 		if match.Type == engine.MatchTag {
 			if len(match.Side1) < 2 {
 				match.Side1 = append(match.Side1, "")
@@ -128,10 +129,10 @@ func (bs *CareerBookScreen) updateEditType(g *Game) {
 }
 
 func (bs *CareerBookScreen) updateEditSide(g *Game, sideIdx int) {
-	bs.editCursor = handleListInput(bs.editCursor, len(g.Roster))
+	bs.editCursor = handleListInput(bs.editCursor, len(bs.roster))
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		match := &bs.card[bs.editIdx]
-		name := g.Roster[bs.editCursor].Name
+		name := bs.roster[bs.editCursor].Name
 		if sideIdx == 0 {
 			if len(match.Side1) > 0 {
 				match.Side1[0] = name
@@ -157,7 +158,7 @@ func (bs *CareerBookScreen) Draw(screen *ebiten.Image, g *Game) {
 
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight
-	title := fmt.Sprintf("  Week %d - %s", bs.career.Week, bs.career.ShowName())
+	title := fmt.Sprintf("  Week %d - %s", bs.fed.Week, bs.fed.ShowName())
 	DrawText(screen, title, Margin, y)
 	y += LineHeight
 	DrawText(screen, "============================================================", Margin, y)
@@ -190,15 +191,15 @@ func (bs *CareerBookScreen) drawCard(screen *ebiten.Image, g *Game, y int) {
 			line = fmt.Sprintf("[BATTLE ROYAL] %d-man Battle Royal", len(m.BREntrants))
 		} else if m.IsTournament {
 			titleTag := ""
-			if m.IsTitle {
-				titleTag = "TITLE "
+			if m.IsTitle && m.TitleIndex >= 0 && m.TitleIndex < len(bs.fed.Championships) {
+				titleTag = bs.fed.Championships[m.TitleIndex].Name + " "
 			}
 			line = fmt.Sprintf("[%sTOURNAMENT] %d-man Tournament", titleTag, m.TournSize)
 		} else {
 			typeStr := engine.MatchTypeString(m.Type)
 			titleTag := ""
-			if m.IsTitle {
-				titleTag = "TITLE - "
+			if m.IsTitle && m.TitleIndex >= 0 && m.TitleIndex < len(bs.fed.Championships) {
+				titleTag = bs.fed.Championships[m.TitleIndex].Name + " - "
 			}
 			s1 := "TBD"
 			if len(m.Side1) > 0 && m.Side1[0] != "" {
@@ -215,15 +216,17 @@ func (bs *CareerBookScreen) drawCard(screen *ebiten.Image, g *Game, y int) {
 				}
 			}
 			// Mark champion
-			champ := bs.career.WorldChampion()
-			if s1 == champ || (len(m.Side1) > 0 && m.Side1[0] == champ) {
-				s1 += " (c)"
-			}
-			if s2 == champ || (len(m.Side2) > 0 && m.Side2[0] == champ) {
-				s2 += " (c)"
+			if m.IsTitle && m.TitleIndex >= 0 && m.TitleIndex < len(bs.fed.Championships) {
+				champ := bs.fed.ChampionOf(m.TitleIndex)
+				if len(m.Side1) > 0 && m.Side1[0] == champ {
+					s1 += " (c)"
+				}
+				if len(m.Side2) > 0 && m.Side2[0] == champ {
+					s2 += " (c)"
+				}
 			}
 			// Mark rivals
-			isFeud := len(m.Side1) > 0 && len(m.Side2) > 0 && bs.career.IsRival(m.Side1[0], m.Side2[0])
+			isFeud := len(m.Side1) > 0 && len(m.Side2) > 0 && bs.fed.IsRival(m.Side1[0], m.Side2[0])
 			feudTag := ""
 			if isFeud {
 				feudTag = " [FEUD]"
@@ -274,7 +277,7 @@ func (bs *CareerBookScreen) drawEditSide(screen *ebiten.Image, g *Game, y int, l
 	DrawText(screen, fmt.Sprintf("EDIT MATCH %d — SELECT %s:", bs.editIdx+1, label), Margin, y)
 	y += LineHeight * 2
 
-	for i, card := range g.Roster {
+	for i, card := range bs.roster {
 		prefix := "  "
 		if i == bs.editCursor {
 			prefix = "> "

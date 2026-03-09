@@ -6,7 +6,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type MenuPhase int
@@ -41,7 +40,7 @@ func NewMenuScreen() *MenuScreen {
 }
 
 var menuOptions = []string{
-	"Career Mode",
+	"Federation",
 	"Singles Match",
 	"Tag Team Match",
 	"Cage Match",
@@ -132,17 +131,7 @@ func (m *MenuScreen) Update(g *Game) error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			switch m.cursor {
 			case menuCareer:
-				career := loader.LoadCareer(g.Store)
-				if career == nil {
-					// New career
-					names := make([]string, len(g.Roster))
-					for i, w := range g.Roster {
-						names[i] = w.Name
-					}
-					career = engine.NewCareer(names)
-					loader.SaveCareer(g.Store, career)
-				}
-				g.SetScreen(NewCareerScreen(career))
+				g.SetScreen(NewFederationSelectScreen(g))
 				return nil
 			case menuBattleRoyal:
 				m.phase = PhaseMultiSelect

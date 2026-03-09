@@ -16,14 +16,15 @@ const (
 )
 
 type CareerHistoryScreen struct {
-	career *engine.CareerSave
+	fed    *engine.Federation
+	save   *engine.FederationSave
 	tab    HistoryTab
 	scroll int
 	lines  []string
 }
 
-func NewCareerHistoryScreen(career *engine.CareerSave) *CareerHistoryScreen {
-	h := &CareerHistoryScreen{career: career}
+func NewCareerHistoryScreen(fed *engine.Federation, save *engine.FederationSave) *CareerHistoryScreen {
+	h := &CareerHistoryScreen{fed: fed, save: save}
 	h.buildLines()
 	return h
 }
@@ -38,15 +39,14 @@ func (h *CareerHistoryScreen) buildLines() {
 		lines = append(lines, "============================================================")
 		lines = append(lines, "")
 
-		if len(h.career.MatchHistory) == 0 {
+		if len(h.fed.MatchHistory) == 0 {
 			lines = append(lines, "  No matches played yet.")
 		} else {
 			lines = append(lines, fmt.Sprintf(" %-5s %-20s %-5s %-20s %-10s %s",
 				"Week", "Winner", "", "Loser", "Method", ""))
 			lines = append(lines, " -----------------------------------------------------------")
-			// Show most recent first
-			for i := len(h.career.MatchHistory) - 1; i >= 0; i-- {
-				m := h.career.MatchHistory[i]
+			for i := len(h.fed.MatchHistory) - 1; i >= 0; i-- {
+				m := h.fed.MatchHistory[i]
 				titleTag := ""
 				if m.IsTitle {
 					titleTag = " [T]"
@@ -69,40 +69,46 @@ func (h *CareerHistoryScreen) buildLines() {
 		lines = append(lines, "============================================================")
 		lines = append(lines, "")
 
-		if len(h.career.Championships) == 0 {
+		if len(h.fed.Championships) == 0 {
 			lines = append(lines, "  No championships configured.")
 		} else {
-			ch := h.career.Championships[0]
-			lines = append(lines, fmt.Sprintf("  %s", ch.Name))
-			lines = append(lines, "")
+			for ci, ch := range h.fed.Championships {
+				if ci > 0 {
+					lines = append(lines, "")
+					lines = append(lines, "  --------------------------------------------------")
+					lines = append(lines, "")
+				}
+				lines = append(lines, fmt.Sprintf("  %s", ch.Name))
+				lines = append(lines, "")
 
-			if ch.Champion == "" {
-				lines = append(lines, "  Status: VACANT")
-			} else {
-				lines = append(lines, fmt.Sprintf("  Current Champion: %s", ch.Champion))
-			}
-			lines = append(lines, "")
+				if ch.Champion == "" {
+					lines = append(lines, "  Status: VACANT")
+				} else {
+					lines = append(lines, fmt.Sprintf("  Current Champion: %s", ch.Champion))
+				}
+				lines = append(lines, "")
 
-			if len(ch.History) == 0 {
-				lines = append(lines, "  No title changes yet.")
-			} else {
-				lines = append(lines, fmt.Sprintf(" %-5s %-22s %-22s %s", "Week", "Winner", "Loser", "Method"))
-				lines = append(lines, " -----------------------------------------------------------")
-				for i := len(ch.History) - 1; i >= 0; i-- {
-					tc := ch.History[i]
-					winner := tc.Winner
-					if winner == "" {
-						winner = "(vacated)"
+				if len(ch.History) == 0 {
+					lines = append(lines, "  No title changes yet.")
+				} else {
+					lines = append(lines, fmt.Sprintf(" %-5s %-22s %-22s %s", "Week", "Winner", "Loser", "Method"))
+					lines = append(lines, " -----------------------------------------------------------")
+					for i := len(ch.History) - 1; i >= 0; i-- {
+						tc := ch.History[i]
+						winner := tc.Winner
+						if winner == "" {
+							winner = "(vacated)"
+						}
+						if len(winner) > 22 {
+							winner = winner[:22]
+						}
+						loser := tc.Loser
+						if len(loser) > 22 {
+							loser = loser[:22]
+						}
+						lines = append(lines, fmt.Sprintf(" W%-4d %-22s %-22s %s",
+							tc.Week, winner, loser, tc.Method))
 					}
-					if len(winner) > 22 {
-						winner = winner[:22]
-					}
-					loser := tc.Loser
-					if len(loser) > 22 {
-						loser = loser[:22]
-					}
-					lines = append(lines, fmt.Sprintf(" W%-4d %-22s %-22s %s",
-						tc.Week, winner, loser, tc.Method))
 				}
 			}
 		}
@@ -113,7 +119,7 @@ func (h *CareerHistoryScreen) buildLines() {
 
 func (h *CareerHistoryScreen) Update(g *Game) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		g.SetScreen(NewCareerScreen(h.career))
+		g.SetScreen(NewCareerScreen(h.fed, h.save))
 		return nil
 	}
 
@@ -164,7 +170,6 @@ func (h *CareerHistoryScreen) Draw(screen *ebiten.Image, g *Game) {
 		y += LineHeight
 	}
 
-	// Tab indicator
 	tabStr := "[TAB] Switch to Title History"
 	if h.tab == HistoryTabTitle {
 		tabStr = "[TAB] Switch to Match History"

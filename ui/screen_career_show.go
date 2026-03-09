@@ -26,9 +26,10 @@ const (
 )
 
 type CareerShowScreen struct {
-	career *engine.CareerSave
-	card   []engine.BookedMatch
-	mode   ShowMode
+	fed  *engine.Federation
+	save *engine.FederationSave
+	card []engine.BookedMatch
+	mode ShowMode
 
 	currentIdx int
 	phase      ShowPhase
@@ -57,9 +58,10 @@ type CareerShowScreen struct {
 	roster []*engine.WrestlerCard
 }
 
-func NewCareerShowScreen(career *engine.CareerSave, card []engine.BookedMatch, mode ShowMode, g *Game) *CareerShowScreen {
+func NewCareerShowScreen(fed *engine.Federation, save *engine.FederationSave, card []engine.BookedMatch, mode ShowMode, g *Game) *CareerShowScreen {
 	cs := &CareerShowScreen{
-		career:  career,
+		fed:     fed,
+		save:    save,
 		card:    card,
 		mode:    mode,
 		speed:   30,
@@ -92,7 +94,6 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 		}
 		if len(picks) >= 3 {
 			cs.brScreen = NewBattleRoyalScreen(picks, g)
-			// Skip intro in career mode — go straight to standings
 			cs.brScreen.champion = cs.brScreen.wrestlers[0]
 			cs.brScreen.phase = BRShowingBracket
 			cs.inBR = true
@@ -161,7 +162,6 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 	card1, ok1 := rosterMap[s1Name]
 	card2, ok2 := rosterMap[s2Name]
 	if !ok1 || !ok2 {
-		// Skip invalid match
 		cs.results = append(cs.results, fmt.Sprintf("%d. CANCELLED — invalid wrestlers", cs.currentIdx+1))
 		cs.currentIdx++
 		cs.startMatch(g)
@@ -173,8 +173,7 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 	match.InitForMatchType()
 	match.ApplyInjuries(g.Injuries.IsInjured)
 
-	// Auto-apply feud rules for rivals
-	if cs.career.IsRival(s1Name, s2Name) {
+	if cs.fed.IsRival(s1Name, s2Name) {
 		match.IsFeud = true
 	}
 
@@ -189,8 +188,8 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 
 	typeStr := engine.MatchTypeString(booked.Type)
 	titleStr := ""
-	if booked.IsTitle {
-		titleStr = " (TITLE MATCH)"
+	if booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships) {
+		titleStr = fmt.Sprintf(" (%s)", cs.fed.Championships[booked.TitleIndex].Name)
 	}
 
 	cs.lines = []string{
@@ -219,7 +218,6 @@ func (cs *CareerShowScreen) shouldSimulate() bool {
 }
 
 func (cs *CareerShowScreen) simulateCurrentMatch(g *Game) {
-	// Show all events at once
 	for cs.shown < len(cs.events) {
 		cs.lines = append(cs.lines, cs.events[cs.shown].Text)
 		cs.shown++
@@ -229,18 +227,15 @@ func (cs *CareerShowScreen) simulateCurrentMatch(g *Game) {
 }
 
 func (cs *CareerShowScreen) simulateBR(g *Game) {
-	// Run all BR matches
 	for cs.brScreen.nextIdx < len(cs.brScreen.wrestlers) {
 		cs.brScreen.startNextMatch(g)
 		cs.brScreen.finishSubMatch(g)
 	}
-	// Record results
 	for _, eliminated := range cs.brScreen.eliminated {
-		cs.career.RecordResult(cs.brScreen.champion.Name, eliminated, "elimination", false)
-		cs.career.AddRivalry(cs.brScreen.champion.Name, eliminated, 1)
+		cs.fed.RecordResult(cs.brScreen.champion.Name, eliminated, "elimination", false)
+		cs.fed.AddRivalry(cs.brScreen.champion.Name, eliminated, 1)
 	}
-	// BR winner earns title shot
-	cs.career.TitleShotEarned = cs.brScreen.champion.Name
+	cs.fed.TitleShotEarned = cs.brScreen.champion.Name
 
 	cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, cs.brScreen.champion.Name))
 	cs.inBR = false
@@ -278,8 +273,8 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 					winner = w2
 				}
 				ts.results[ts.currentRound][ts.currentMatch] = winner
-				cs.career.RecordResult(result.Winner, result.Loser, result.Method, false)
-				cs.career.AddRivalry(result.Winner, result.Loser, 1)
+				cs.fed.RecordResult(result.Winner, result.Loser, result.Method, false)
+				cs.fed.AddRivalry(result.Winner, result.Loser, 1)
 			} else {
 				ts.results[ts.currentRound][ts.currentMatch] = w1
 			}
@@ -291,7 +286,6 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 	}
 	loader.SaveInjuries(g.Store, g.Injuries)
 
-	// Determine tournament winner
 	winner := ts.results[ts.totalRounds-1][0]
 	winnerName := "Unknown"
 	if winner != nil {
@@ -299,8 +293,8 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 	}
 
 	booked := cs.card[cs.currentIdx]
-	if booked.IsTitle && cs.career.WorldChampion() == "" {
-		cs.career.ChangeTitleHolder(winnerName, "", "tournament")
+	if booked.IsTitle && booked.TitleIndex >= 0 && cs.fed.ChampionOf(booked.TitleIndex) == "" {
+		cs.fed.ChangeTitleHolder(booked.TitleIndex, winnerName, "", "tournament")
 	}
 
 	cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] Winner: %s", cs.currentIdx+1, winnerName))
@@ -314,52 +308,44 @@ func (cs *CareerShowScreen) processMatchResult(g *Game) {
 	booked := cs.card[cs.currentIdx]
 
 	if result != nil {
-		// Record injuries
 		if result.InjuredWrestler != "" && result.InjuryCards > 0 {
 			g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
 		}
 
-		// Update career records
-		cs.career.RecordResult(result.Winner, result.Loser, result.Method, booked.IsTitle)
+		cs.fed.RecordResult(result.Winner, result.Loser, result.Method, booked.IsTitle)
 
-		// Rivalry points
-		cs.career.AddRivalry(result.Winner, result.Loser, 1)
+		cs.fed.AddRivalry(result.Winner, result.Loser, 1)
 		if result.InjuredWrestler != "" {
-			cs.career.AddRivalry(result.Winner, result.Loser, 2) // +2 more for injury
+			cs.fed.AddRivalry(result.Winner, result.Loser, 2)
 		}
 		if result.FeudText != "" {
-			cs.career.AddRivalry(result.Winner, result.Loser, 2)
+			cs.fed.AddRivalry(result.Winner, result.Loser, 2)
 		}
 
 		// Title change
-		if booked.IsTitle {
-			champ := cs.career.WorldChampion()
+		if booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships) {
+			champ := cs.fed.ChampionOf(booked.TitleIndex)
 			if result.Winner != champ {
-				cs.career.ChangeTitleHolder(result.Winner, result.Loser, result.Method)
+				cs.fed.ChangeTitleHolder(booked.TitleIndex, result.Winner, result.Loser, result.Method)
 			} else {
-				// Successful defense — reset counter
-				if len(cs.career.Championships) > 0 {
-					cs.career.Championships[0].DefensesLeft = 4
-				}
+				cs.fed.Championships[booked.TitleIndex].DefensesLeft = 4
 			}
 		}
 
 		typeStr := engine.MatchTypeString(booked.Type)
 		titleTag := ""
-		if booked.IsTitle {
-			titleTag = " [TITLE]"
+		if booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships) {
+			titleTag = fmt.Sprintf(" [%s]", cs.fed.Championships[booked.TitleIndex].Name)
 		}
 		cs.results = append(cs.results, fmt.Sprintf("%d. [%s%s] %s def. %s by %s",
 			cs.currentIdx+1, typeStr, titleTag, result.Winner, result.Loser, result.Method))
 	} else {
-		// Draw
 		if len(booked.Side1) > 0 && len(booked.Side2) > 0 {
-			cs.career.RecordDraw(booked.Side1[0], booked.Side2[0])
+			cs.fed.RecordDraw(booked.Side1[0], booked.Side2[0])
 		}
 		cs.results = append(cs.results, fmt.Sprintf("%d. DRAW", cs.currentIdx+1))
 	}
 
-	// Decrement injuries after each match
 	g.Injuries.DecrementAll()
 	loader.SaveInjuries(g.Store, g.Injuries)
 
@@ -373,30 +359,26 @@ func (cs *CareerShowScreen) processMatchResult(g *Game) {
 }
 
 func (cs *CareerShowScreen) finishShow(g *Game) {
-	// Advance week
-	cs.career.AdvanceWeek()
+	cs.fed.AdvanceWeek()
 
-	// Check if champion needs to vacate (defense overdue)
-	if len(cs.career.Championships) > 0 && cs.career.Championships[0].DefensesLeft <= 0 {
-		if cs.career.WorldChampion() != "" {
-			cs.career.VacateTitle()
+	// Check if any champion needs to vacate (defense overdue)
+	for i := range cs.fed.Championships {
+		if cs.fed.Championships[i].DefensesLeft <= 0 && cs.fed.Championships[i].Champion != "" {
+			cs.fed.VacateTitle(i)
 		}
 	}
 
-	// Save career
-	loader.SaveCareer(g.Store, cs.career)
+	loader.SaveFederations(g.Store, cs.save)
 
 	cs.phase = ShowComplete
 }
 
 func (cs *CareerShowScreen) Update(g *Game) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		// Go back to booking screen so user can resume or change options
-		g.SetScreen(NewCareerBookScreen(cs.career, cs.card, g))
+		g.SetScreen(NewCareerBookScreen(cs.fed, cs.save, cs.card, g))
 		return nil
 	}
 
-	// Delegate to embedded BR/tournament screens if active
 	if cs.inBR && !cs.shouldSimulate() {
 		return cs.updateBR(g)
 	}
@@ -414,7 +396,7 @@ func (cs *CareerShowScreen) Update(g *Game) error {
 		}
 	case ShowComplete:
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			g.SetScreen(NewCareerScreen(cs.career))
+			g.SetScreen(NewCareerScreen(cs.fed, cs.save))
 		}
 	}
 
@@ -425,20 +407,16 @@ func (cs *CareerShowScreen) updateBR(g *Game) error {
 	br := cs.brScreen
 	oldPhase := br.phase
 
-	// Let BR screen handle input
 	br.Update(g)
 
-	// If BR finished, record results and advance
 	if br.phase == BRFinished && oldPhase != BRFinished {
 		for _, eliminated := range br.eliminated {
-			cs.career.RecordResult(br.champion.Name, eliminated, "elimination", false)
+			cs.fed.RecordResult(br.champion.Name, eliminated, "elimination", false)
 		}
-		// BR winner earns title shot
-		cs.career.TitleShotEarned = br.champion.Name
+		cs.fed.TitleShotEarned = br.champion.Name
 		cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, br.champion.Name))
 	}
 
-	// When user presses space on finished BR, move to next match
 	if br.phase == BRFinished {
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			cs.inBR = false
@@ -457,12 +435,11 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 	ts.Update(g)
 
 	if ts.phase == TournFinished && oldPhase != TournFinished {
-		// Record all tournament results
 		winner := ts.results[ts.totalRounds-1][0]
 		if winner != nil {
 			booked := cs.card[cs.currentIdx]
-			if booked.IsTitle && cs.career.WorldChampion() == "" {
-				cs.career.ChangeTitleHolder(winner.Name, "", "tournament")
+			if booked.IsTitle && booked.TitleIndex >= 0 && cs.fed.ChampionOf(booked.TitleIndex) == "" {
+				cs.fed.ChangeTitleHolder(booked.TitleIndex, winner.Name, "", "tournament")
 			}
 			cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] Winner: %s", cs.currentIdx+1, winner.Name))
 		}
@@ -530,7 +507,6 @@ func (cs *CareerShowScreen) updateRunning(g *Game) {
 }
 
 func (cs *CareerShowScreen) Draw(screen *ebiten.Image, g *Game) {
-	// Delegate to embedded screens if active
 	if cs.inBR && !cs.shouldSimulate() {
 		cs.brScreen.Draw(screen, g)
 		return
@@ -586,7 +562,7 @@ func (cs *CareerShowScreen) drawComplete(screen *ebiten.Image, g *Game) {
 	y := Margin
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight
-	DrawText(screen, fmt.Sprintf("  %s — RESULTS", cs.career.ShowName()), Margin, y)
+	DrawText(screen, fmt.Sprintf("  %s — RESULTS", cs.fed.ShowName()), Margin, y)
 	y += LineHeight
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight * 2
@@ -598,19 +574,21 @@ func (cs *CareerShowScreen) drawComplete(screen *ebiten.Image, g *Game) {
 
 	y += LineHeight
 
-	// Show updated champion
-	champ := cs.career.WorldChampion()
-	if champ == "" {
-		DrawText(screen, "World Heavyweight Championship: VACANT", Margin, y)
-	} else {
-		DrawText(screen, fmt.Sprintf("World Heavyweight Champion: %s", champ), Margin, y)
+	// Show all championships
+	for _, ch := range cs.fed.Championships {
+		if ch.Champion == "" {
+			DrawText(screen, fmt.Sprintf("%s: VACANT", ch.Name), Margin, y)
+		} else {
+			DrawText(screen, fmt.Sprintf("%s: %s", ch.Name, ch.Champion), Margin, y)
+		}
+		y += LineHeight
 	}
-	y += LineHeight
 
-	DrawText(screen, fmt.Sprintf("Week %d complete. Career saved.", cs.career.Week), Margin, y)
+	y += LineHeight
+	DrawText(screen, fmt.Sprintf("Week %d complete. Federation saved.", cs.fed.Week), Margin, y)
 
 	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[SPACE] Continue  [ESC] Career Dashboard", Margin, statusY)
+	DrawText(screen, "[SPACE] Continue  [ESC] Federation Dashboard", Margin, statusY)
 }
 
 func (cs *CareerShowScreen) visibleLines(g *Game) int {

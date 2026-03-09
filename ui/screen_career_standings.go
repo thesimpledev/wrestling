@@ -10,13 +10,14 @@ import (
 )
 
 type CareerStandingsScreen struct {
-	career *engine.CareerSave
+	fed    *engine.Federation
+	save   *engine.FederationSave
 	scroll int
 	lines  []string
 }
 
-func NewCareerStandingsScreen(career *engine.CareerSave) *CareerStandingsScreen {
-	s := &CareerStandingsScreen{career: career}
+func NewCareerStandingsScreen(fed *engine.Federation, save *engine.FederationSave) *CareerStandingsScreen {
+	s := &CareerStandingsScreen{fed: fed, save: save}
 	s.buildLines()
 	return s
 }
@@ -28,16 +29,32 @@ func (s *CareerStandingsScreen) buildLines() {
 	lines = append(lines, "============================================================")
 	lines = append(lines, "")
 
-	champ := s.career.WorldChampion()
+	// Show all championships
+	for _, ch := range s.fed.Championships {
+		if ch.Champion == "" {
+			lines = append(lines, fmt.Sprintf("  %s: VACANT", ch.Name))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s: %s", ch.Name, ch.Champion))
+		}
+	}
+	lines = append(lines, "")
 
-	// Build ranked list: all wrestlers sorted by win pct, then wins
+	// Collect all champion names for marking
+	champSet := make(map[string]bool)
+	for _, ch := range s.fed.Championships {
+		if ch.Champion != "" {
+			champSet[ch.Champion] = true
+		}
+	}
+
+	// Build ranked list
 	type entry struct {
 		name string
 		rec  *engine.WrestlerRecord
 		pct  float64
 	}
 	var entries []entry
-	for name, rec := range s.career.Records {
+	for name, rec := range s.fed.Records {
 		total := rec.Wins + rec.Losses + rec.Draws
 		pct := 0.0
 		if total > 0 {
@@ -58,7 +75,7 @@ func (s *CareerStandingsScreen) buildLines() {
 
 	for i, e := range entries {
 		nameStr := e.name
-		if e.name == champ {
+		if champSet[e.name] {
 			nameStr += " (c)"
 		}
 		if len(nameStr) > 22 {
@@ -77,13 +94,13 @@ func (s *CareerStandingsScreen) buildLines() {
 	}
 
 	// Active rivalries
-	rivals := s.career.ActiveRivals()
+	rivals := s.fed.ActiveRivals()
 	if len(rivals) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, "ACTIVE RIVALRIES:")
 		lines = append(lines, "")
 		for _, pair := range rivals {
-			score := s.career.RivalryScore(pair[0], pair[1])
+			score := s.fed.RivalryScore(pair[0], pair[1])
 			lines = append(lines, fmt.Sprintf("  %s vs %s (intensity: %d)", pair[0], pair[1], score))
 		}
 	}
@@ -93,7 +110,7 @@ func (s *CareerStandingsScreen) buildLines() {
 
 func (s *CareerStandingsScreen) Update(g *Game) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		g.SetScreen(NewCareerScreen(s.career))
+		g.SetScreen(NewCareerScreen(s.fed, s.save))
 		return nil
 	}
 

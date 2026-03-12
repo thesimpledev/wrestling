@@ -117,19 +117,21 @@ func (fc *FederationCreateScreen) Update(g *Game) error {
 			fc.phase = CreatePhaseRoster
 			return nil
 		}
-		fc.beltInput.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.beltInput.Text) > 0 {
-			fc.belts = append(fc.belts, fc.beltInput.Text)
-			fc.beltInput.Reset()
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fc.belts) > 0 && len(fc.beltInput.Text) == 0 {
-			fc.belts = fc.belts[:len(fc.belts)-1]
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) && len(fc.beltInput.Text) == 0 && len(fc.belts) >= 1 {
+		if inpututil.IsKeyJustPressed(ebiten.KeyTab) && len(fc.belts) >= 1 {
 			fc.phase = CreatePhaseSchedule
 			fc.showNameInput.Reset()
 			fc.ppvFreqInput.Reset()
 			fc.ppvFreqInput.Text = "4"
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fc.belts) > 0 && len(fc.beltInput.Text) == 0 {
+			fc.belts = fc.belts[:len(fc.belts)-1]
+			return nil
+		}
+		fc.beltInput.Update()
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.beltInput.Text) > 0 {
+			fc.belts = append(fc.belts, fc.beltInput.Text)
+			fc.beltInput.Reset()
 		}
 
 	case CreatePhaseSchedule:
@@ -149,16 +151,18 @@ func (fc *FederationCreateScreen) Update(g *Game) error {
 			fc.phase = CreatePhaseSchedule
 			return nil
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+			fc.phase = CreatePhaseConfirm
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fc.ppvNames) > 0 && len(fc.ppvNameInput.Text) == 0 {
+			fc.ppvNames = fc.ppvNames[:len(fc.ppvNames)-1]
+			return nil
+		}
 		fc.ppvNameInput.Update()
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.ppvNameInput.Text) > 0 {
 			fc.ppvNames = append(fc.ppvNames, fc.ppvNameInput.Text)
 			fc.ppvNameInput.Reset()
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fc.ppvNames) > 0 && len(fc.ppvNameInput.Text) == 0 {
-			fc.ppvNames = fc.ppvNames[:len(fc.ppvNames)-1]
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) && len(fc.ppvNameInput.Text) == 0 {
-			fc.phase = CreatePhaseConfirm
 		}
 
 	case CreatePhaseConfirm:
@@ -240,7 +244,7 @@ func (fc *FederationCreateScreen) Draw(screen *ebiten.Image, g *Game) {
 		DrawText(screen, "Add belt: > "+fc.beltInput.DisplayText(), Margin, y)
 
 		statusY := g.screenH - LineHeight - Margin
-		DrawText(screen, "[TYPE] Belt Name  [ENTER] Add  [D] Delete Last  [SPACE] Done  [ESC] Back", Margin, statusY)
+		DrawText(screen, "[TYPE] Belt Name  [ENTER] Add  [D] Delete Last  [TAB] Done  [ESC] Back", Margin, statusY)
 
 	case CreatePhaseSchedule:
 		DrawText(screen, "SHOW SCHEDULE:", Margin, y)
@@ -272,7 +276,7 @@ func (fc *FederationCreateScreen) Draw(screen *ebiten.Image, g *Game) {
 		DrawText(screen, "Add PPV: > "+fc.ppvNameInput.DisplayText(), Margin, y)
 
 		statusY := g.screenH - LineHeight - Margin
-		DrawText(screen, "[TYPE] PPV Name  [ENTER] Add  [D] Delete Last  [SPACE] Done  [ESC] Back", Margin, statusY)
+		DrawText(screen, "[TYPE] PPV Name  [ENTER] Add  [D] Delete Last  [TAB] Done  [ESC] Back", Margin, statusY)
 
 	case CreatePhaseConfirm:
 		DrawText(screen, "CONFIRM FEDERATION:", Margin, y)

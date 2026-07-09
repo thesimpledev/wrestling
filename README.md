@@ -9,17 +9,27 @@ Compatible with Filsinger Games card systems including Champions of the Galaxy a
 - Go 1.21 or later
 - Linux, macOS, or Windows
 
+## Project Layout
+
+This repository is currently being ported from Go/Ebitengine to a native TypeScript web app.
+
+- `go/` — the existing Go + Ebitengine implementation (reference and currently-deployed build)
+- `web/` — the in-progress TypeScript port (not yet functional)
+
+Until the port reaches parity, the Go build under `go/` remains the canonical game.
+
 ## Installation
 
 ```
 git clone <repo-url>
-cd wrestling
+cd wrestling/go
 go mod tidy
 ```
 
 ## Running
 
 ```
+cd go
 go run .
 ```
 

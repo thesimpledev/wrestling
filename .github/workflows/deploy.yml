@@ -24,22 +24,23 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: go/go.mod
 
       - name: Build WASM
+        working-directory: go
         run: GOOS=js GOARCH=wasm go build -o dist/web/wrestling.wasm .
 
       - name: Copy wasm_exec.js
-        run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/web/
+        run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" go/dist/web/
 
       - name: Cache-bust
-        run: sed -i "s/__BUILD_VERSION__/${{ github.sha }}/" dist/web/index.html
+        run: sed -i "s/__BUILD_VERSION__/${{ github.sha }}/" go/dist/web/index.html
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/web
+          path: go/dist/web
 
       - name: Deploy to GitHub Pages
         id: deployment

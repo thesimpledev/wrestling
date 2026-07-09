@@ -7,7 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type BRPhase int
@@ -213,7 +212,7 @@ func (b *BattleRoyalScreen) finishSubMatch(g *Game) {
 	// Decrement injuries once for the entire battle royal
 	if b.nextIdx >= len(b.wrestlers) {
 		g.Injuries.DecrementAll()
-		loader.SaveInjuries(g.Store, g.Injuries)
+		g.SaveInjuries()
 	}
 
 	b.phase = BRMatchResult

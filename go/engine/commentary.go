@@ -6,7 +6,7 @@ import (
 )
 
 func pick(texts []string) string {
-	return texts[rand.IntN(len(texts))]
+	return texts[rand.IntN(len(texts))] // #nosec G404 -- flavor text selection, not security-sensitive
 }
 
 // ─── DEFENSE COMMENTARY ─────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ func CommentaryMatchStart(name1, name2 string) string {
 // CommentaryMatchEnd returns varied match end commentary.
 func CommentaryMatchEnd(winner, loser, method string) string {
 	texts := matchEndTexts
-	idx := rand.IntN(len(texts))
+	idx := rand.IntN(len(texts)) // #nosec G404 -- flavor text selection, not security-sensitive
 	switch idx {
 	case 0:
 		return fmt.Sprintf("MATCH OVER! %s defeats %s by %s!", winner, loser, method)
@@ -151,7 +151,7 @@ var moveConnectTexts = []string{
 
 // CommentaryMove returns varied move commentary.
 func CommentaryMove(attacker, defender, moveName string) string {
-	idx := rand.IntN(len(moveConnectTexts))
+	idx := rand.IntN(len(moveConnectTexts)) // #nosec G404 -- flavor text selection, not security-sensitive
 	switch idx {
 	case 0:
 		return fmt.Sprintf("%s hits %s with a %s!", attacker, defender, moveName)

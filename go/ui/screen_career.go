@@ -7,7 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type CareerMenuOption int
@@ -59,7 +58,7 @@ func (cs *CareerScreen) Update(g *Game) error {
 		case CareerOptSettings:
 			g.SetScreen(NewFederationSettingsScreen(cs.fed, cs.save))
 		case CareerOptQuit:
-			loader.SaveFederations(g.Store, cs.save)
+			g.SaveFederations(cs.save)
 			g.SetScreen(NewFederationSelectScreen(g))
 		}
 	}

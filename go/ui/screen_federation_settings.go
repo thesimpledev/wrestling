@@ -8,7 +8,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type SettingsField int
@@ -85,7 +84,7 @@ func (fs *FederationSettingsScreen) Update(g *Game) error {
 				fs.ppvInput.Reset()
 				fs.phase = SettingsEditPPVNames
 			case SettingsFieldSave:
-				loader.SaveFederations(g.Store, fs.save)
+				g.SaveFederations(fs.save)
 				g.SetScreen(NewCareerScreen(fs.fed, fs.save))
 			}
 		}

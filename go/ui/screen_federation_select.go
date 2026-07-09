@@ -38,7 +38,7 @@ func (fs *FederationSelectScreen) Update(g *Game) error {
 		if fs.cursor < len(fs.save.Federations) {
 			// Select existing federation
 			fs.save.ActiveIndex = fs.cursor
-			loader.SaveFederations(g.Store, fs.save)
+			g.SaveFederations(fs.save)
 			fed := fs.save.Federations[fs.cursor]
 			g.SetScreen(NewCareerScreen(fed, fs.save))
 		} else {

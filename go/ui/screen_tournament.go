@@ -9,7 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type TournPhase int
@@ -53,7 +52,7 @@ type TournamentScreen struct {
 	sizeCursor int
 
 	// Bracket view
-	bracketLines []string
+	bracketLines  []string
 	bracketScroll int
 
 	roster []*engine.WrestlerCard
@@ -134,7 +133,7 @@ func (t *TournamentScreen) updateFillBracket(g *Game) {
 			// Auto-fill remaining slots
 			for i := range t.seeds {
 				if t.seeds[i] == nil {
-					t.seeds[i] = g.Roster[rand.Intn(len(g.Roster))]
+					t.seeds[i] = g.Roster[rand.Intn(len(g.Roster))] // #nosec G404 -- bracket auto-fill, not security-sensitive
 				}
 			}
 			t.startBracket()
@@ -261,7 +260,7 @@ func (t *TournamentScreen) finishSubMatch(g *Game) {
 	if result != nil && result.InjuredWrestler != "" && result.InjuryCards > 0 {
 		g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
 	}
-	loader.SaveInjuries(g.Store, g.Injuries)
+	g.SaveInjuries()
 
 	if result != nil {
 		// Find the winner card
@@ -298,7 +297,7 @@ func (t *TournamentScreen) advanceToNext(g *Game) {
 	if t.currentMatch >= matchesInRound {
 		// Decrement injuries once per round
 		g.Injuries.DecrementAll()
-		loader.SaveInjuries(g.Store, g.Injuries)
+		g.SaveInjuries()
 
 		t.currentRound++
 		t.currentMatch = 0

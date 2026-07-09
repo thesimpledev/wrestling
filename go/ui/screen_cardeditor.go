@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -325,9 +326,8 @@ func (e *CardEditorScreen) validateCard() string {
 			if moveName == "" {
 				return fmt.Sprintf("L%d Move %d: name cannot be empty", lvl, slot)
 			}
-			var power, defLvl int
-			fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &power)
-			fmt.Sscanf(strings.TrimSpace(parts[2]), "%d", &defLvl)
+			power, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
+			defLvl, _ := strconv.Atoi(strings.TrimSpace(parts[2]))
 			if power < 1 || power > 3 {
 				return fmt.Sprintf("L%d Move %d: power must be 1-3 (got %d)", lvl, slot, power)
 			}
@@ -353,8 +353,7 @@ func (e *CardEditorScreen) validateCard() string {
 			if !validTypes[dtype] {
 				return fmt.Sprintf("L%d Def %d: type must be dazed/hurt/down/reversal/pin", lvl, slot)
 			}
-			var power int
-			fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &power)
+			power, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
 			if power < 1 || power > 3 {
 				return fmt.Sprintf("L%d Def %d: power must be 1-3 (got %d)", lvl, slot, power)
 			}
@@ -405,8 +404,12 @@ func (e *CardEditorScreen) saveCard(g *Game) {
 			defLvl := 1
 			if len(parts) >= 3 {
 				name = strings.TrimSpace(parts[0])
-				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &power)
-				fmt.Sscanf(strings.TrimSpace(parts[2]), "%d", &defLvl)
+				if v, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					power = v
+				}
+				if v, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil {
+					defLvl = v
+				}
 			}
 			offense[lvl][slot] = map[string]any{
 				"name":      name,
@@ -428,7 +431,9 @@ func (e *CardEditorScreen) saveCard(g *Game) {
 			power := 1
 			if len(parts) >= 2 {
 				dtype = strings.TrimSpace(parts[0])
-				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &power)
+				if v, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					power = v
+				}
 			}
 			defense[lvl][slot] = map[string]any{
 				"type":  dtype,
@@ -470,8 +475,6 @@ func (e *CardEditorScreen) fieldValue(label string) string {
 }
 
 func (e *CardEditorScreen) fieldInt(label string) int {
-	val := e.fieldValue(label)
-	var n int
-	fmt.Sscanf(val, "%d", &n)
+	n, _ := strconv.Atoi(strings.TrimSpace(e.fieldValue(label)))
 	return n
 }

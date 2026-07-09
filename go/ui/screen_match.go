@@ -4,7 +4,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type MatchState int
@@ -79,7 +78,7 @@ func (ms *MatchScreen) saveInjuries(g *Game) {
 	}
 	// Decrement existing injuries (one match = one fight card)
 	g.Injuries.DecrementAll()
-	loader.SaveInjuries(g.Store, g.Injuries)
+	g.SaveInjuries()
 }
 
 func (ms *MatchScreen) Update(g *Game) error {

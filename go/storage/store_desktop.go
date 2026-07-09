@@ -33,7 +33,7 @@ func (s *DesktopStore) LoadAllCardBytes() (map[string][]byte, error) {
 		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(s.dataDir, name))
+		data, err := os.ReadFile(filepath.Join(s.dataDir, name)) // #nosec G304 -- name comes from ReadDir of dataDir, cannot traverse
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", name, err)
 		}
@@ -43,7 +43,8 @@ func (s *DesktopStore) LoadAllCardBytes() (map[string][]byte, error) {
 }
 
 func (s *DesktopStore) SaveCardBytes(filename string, data []byte) error {
-	return os.WriteFile(filepath.Join(s.dataDir, filename), data, 0644)
+	// Base strips any path components so a card name can't write outside dataDir.
+	return os.WriteFile(filepath.Join(s.dataDir, filepath.Base(filename)), data, 0600)
 }
 
 func (s *DesktopStore) injuriesPath() string {
@@ -59,7 +60,7 @@ func (s *DesktopStore) LoadInjuriesJSON() ([]byte, error) {
 }
 
 func (s *DesktopStore) SaveInjuriesJSON(data []byte) error {
-	return os.WriteFile(s.injuriesPath(), data, 0644)
+	return os.WriteFile(s.injuriesPath(), data, 0600)
 }
 
 func (s *DesktopStore) careerPath() string {
@@ -75,5 +76,5 @@ func (s *DesktopStore) LoadCareerJSON() ([]byte, error) {
 }
 
 func (s *DesktopStore) SaveCareerJSON(data []byte) error {
-	return os.WriteFile(s.careerPath(), data, 0644)
+	return os.WriteFile(s.careerPath(), data, 0600)
 }

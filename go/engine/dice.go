@@ -4,7 +4,7 @@ import "math/rand/v2"
 
 // Roll1d6 returns a random number from 1-6.
 func Roll1d6() int {
-	return rand.IntN(6) + 1
+	return rand.IntN(6) + 1 // #nosec G404 -- game dice, not security-sensitive
 }
 
 // Roll2d6 returns the sum of two six-sided dice (2-12).

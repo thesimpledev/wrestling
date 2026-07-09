@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -35,6 +36,7 @@ type Game struct {
 	screenW  int
 	screenH  int
 	scale    int
+	notice   string
 	Roster   []*engine.WrestlerCard
 	Store    storage.Store
 	Injuries loader.InjuryStore
@@ -55,7 +57,30 @@ func (g *Game) SetScreen(s Screen) {
 	g.screen = s
 }
 
+// SetNotice shows a banner message on top of the active screen until the
+// next keypress.
+func (g *Game) SetNotice(msg string) {
+	g.notice = msg
+}
+
+// SaveInjuries persists the injury store and shows a banner if it fails.
+func (g *Game) SaveInjuries() {
+	if err := loader.SaveInjuries(g.Store, g.Injuries); err != nil {
+		g.SetNotice("SAVE FAILED (injuries): " + err.Error())
+	}
+}
+
+// SaveFederations persists career data and shows a banner if it fails.
+func (g *Game) SaveFederations(save *engine.FederationSave) {
+	if err := loader.SaveFederations(g.Store, save); err != nil {
+		g.SetNotice("SAVE FAILED (career): " + err.Error())
+	}
+}
+
 func (g *Game) Update() error {
+	if g.notice != "" && len(inpututil.AppendJustPressedKeys(nil)) > 0 {
+		g.notice = ""
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		if g.scale == 2 {
 			g.scale = 1
@@ -70,6 +95,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.screenW = screen.Bounds().Dx()
 	g.screenH = screen.Bounds().Dy()
 	g.screen.Draw(screen, g)
+	if g.notice != "" {
+		banner := screen.SubImage(image.Rect(0, 0, g.screenW, LineHeight+Margin)).(*ebiten.Image)
+		banner.Fill(color.RGBA{0xA0, 0x10, 0x10, 0xFF})
+		DrawText(screen, g.notice, Margin, Margin/2)
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {

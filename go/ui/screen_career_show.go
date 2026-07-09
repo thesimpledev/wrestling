@@ -6,7 +6,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type ShowMode int
@@ -284,7 +283,7 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 		ts.currentRound++
 		ts.currentMatch = 0
 	}
-	loader.SaveInjuries(g.Store, g.Injuries)
+	g.SaveInjuries()
 
 	winner := ts.results[ts.totalRounds-1][0]
 	winnerName := "Unknown"
@@ -347,7 +346,7 @@ func (cs *CareerShowScreen) processMatchResult(g *Game) {
 	}
 
 	g.Injuries.DecrementAll()
-	loader.SaveInjuries(g.Store, g.Injuries)
+	g.SaveInjuries()
 
 	cs.lines = append(cs.lines, "")
 	if result != nil {
@@ -368,7 +367,7 @@ func (cs *CareerShowScreen) finishShow(g *Game) {
 		}
 	}
 
-	loader.SaveFederations(g.Store, cs.save)
+	g.SaveFederations(cs.save)
 
 	cs.phase = ShowComplete
 }
@@ -407,7 +406,9 @@ func (cs *CareerShowScreen) updateBR(g *Game) error {
 	br := cs.brScreen
 	oldPhase := br.phase
 
-	br.Update(g)
+	if err := br.Update(g); err != nil {
+		return err
+	}
 
 	if br.phase == BRFinished && oldPhase != BRFinished {
 		for _, eliminated := range br.eliminated {
@@ -432,7 +433,9 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 	ts := cs.tournScreen
 	oldPhase := ts.phase
 
-	ts.Update(g)
+	if err := ts.Update(g); err != nil {
+		return err
+	}
 
 	if ts.phase == TournFinished && oldPhase != TournFinished {
 		winner := ts.results[ts.totalRounds-1][0]

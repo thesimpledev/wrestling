@@ -7,7 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/engine"
-	"wrestling/loader"
 )
 
 type CreatePhase int
@@ -182,7 +181,7 @@ func (fc *FederationCreateScreen) Update(g *Game) error {
 			fed := engine.NewFederation(cfg)
 			fc.save.Federations = append(fc.save.Federations, fed)
 			fc.save.ActiveIndex = len(fc.save.Federations) - 1
-			loader.SaveFederations(g.Store, fc.save)
+			g.SaveFederations(fc.save)
 			g.SetScreen(NewCareerScreen(fed, fc.save))
 		}
 	}

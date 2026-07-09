@@ -3,5 +3,4 @@ go/dist/web/wrestling.wasm
 go/dist/web/wasm_exec.js
 go/data/career.json
 goaudit-report.json
-web/node_modules
-web/dist
+web/

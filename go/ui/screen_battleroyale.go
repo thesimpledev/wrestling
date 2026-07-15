@@ -27,6 +27,10 @@ type BattleRoyalScreen struct {
 	championFatigue int // accumulated PIN carry-over
 	nextIdx         int // next challenger index (starts at 1, champion is wrestlers[0])
 
+	// Set when the battle royal runs inside another screen (career show).
+	// The host screen owns navigation.
+	embedded bool
+
 	// Sub-match display
 	match    *engine.Match
 	events   []engine.Event
@@ -55,7 +59,7 @@ func NewBattleRoyalScreen(wrestlers []*engine.WrestlerCard, g *Game) *BattleRoya
 }
 
 func (b *BattleRoyalScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !b.embedded {
 		g.SetScreen(NewMenuScreen())
 		return nil
 	}
@@ -85,7 +89,7 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 		}
 
 	case BRFinished:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if !b.embedded && (inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)) {
 			g.SetScreen(NewMenuScreen())
 		}
 	}

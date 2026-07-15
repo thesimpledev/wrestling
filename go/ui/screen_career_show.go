@@ -93,6 +93,7 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 		}
 		if len(picks) >= 3 {
 			cs.brScreen = NewBattleRoyalScreen(picks, g)
+			cs.brScreen.embedded = true
 			cs.brScreen.champion = cs.brScreen.wrestlers[0]
 			cs.brScreen.phase = BRShowingBracket
 			cs.inBR = true
@@ -133,6 +134,11 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 		}
 		ts.buildBracketLines()
 		ts.phase = TournShowBracket
+		ts.embedded = true
+		ts.onMatchDone = func(result *engine.MatchResult) {
+			cs.fed.RecordResult(result.Winner, result.Loser, result.Method, false)
+			cs.fed.AddRivalry(result.Winner, result.Loser, 1)
+		}
 		cs.tournScreen = ts
 		cs.inTourn = true
 		cs.inBR = false
@@ -248,7 +254,17 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 		matchesInRound := ts.bracketSize / (1 << (ts.currentRound + 1))
 		for ts.currentMatch < matchesInRound {
 			w1, w2 := ts.getMatchup(ts.currentRound, ts.currentMatch)
+			if w1 == nil && w2 == nil {
+				ts.currentMatch++
+				continue
+			}
 			if w1 == nil || w2 == nil {
+				// Missing entrant — the other wrestler advances on a bye
+				winner := w1
+				if winner == nil {
+					winner = w2
+				}
+				ts.results[ts.currentRound][ts.currentMatch] = winner
 				ts.currentMatch++
 				continue
 			}
@@ -416,13 +432,15 @@ func (cs *CareerShowScreen) updateBR(g *Game) error {
 		}
 		cs.fed.TitleShotEarned = br.champion.Name
 		cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, br.champion.Name))
+		// Don't reuse the same key press to advance past the winner screen
+		return nil
 	}
 
 	if br.phase == BRFinished {
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			cs.inBR = false
 			cs.currentIdx++
-			cs.phase = ShowMatchResult
+			cs.startMatch(g)
 		}
 	}
 
@@ -446,13 +464,15 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 			}
 			cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] Winner: %s", cs.currentIdx+1, winner.Name))
 		}
+		// Don't reuse the same key press to advance past the champion screen
+		return nil
 	}
 
 	if ts.phase == TournFinished {
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			cs.inTourn = false
 			cs.currentIdx++
-			cs.phase = ShowMatchResult
+			cs.startMatch(g)
 		}
 	}
 

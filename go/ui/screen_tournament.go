@@ -56,6 +56,11 @@ type TournamentScreen struct {
 	bracketScroll int
 
 	roster []*engine.WrestlerCard
+
+	// Set when the tournament runs inside another screen (career show).
+	// The host screen owns navigation and match-result bookkeeping.
+	embedded    bool
+	onMatchDone func(result *engine.MatchResult)
 }
 
 func NewTournamentScreen(g *Game) *TournamentScreen {
@@ -67,27 +72,35 @@ func NewTournamentScreen(g *Game) *TournamentScreen {
 }
 
 func (t *TournamentScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		if t.phase == TournSelectSize {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !t.embedded {
+		switch t.phase {
+		case TournSelectSize:
 			g.SetScreen(NewMenuScreen())
-			return nil
-		}
-		if t.phase == TournFillBracket {
+		case TournFillBracket:
 			t.phase = TournSelectSize
 			t.fillCursor = 0
 			t.rosterCursor = 0
-			return nil
+		case TournRunningMatch:
+			// Fast-forward the rest of the match instead of losing the tournament
+			for t.shown < len(t.events) {
+				t.lines = append(t.lines, t.events[t.shown].Text)
+				t.shown++
+			}
+			t.finishSubMatch(g)
+		case TournMatchResult:
+			t.advanceToNext(g)
+		default: // TournShowBracket, TournFinished — quit tournament
+			g.SetScreen(NewMenuScreen())
 		}
-		// Any other phase — quit tournament
-		g.SetScreen(NewMenuScreen())
 		return nil
 	}
 
 	switch t.phase {
 	case TournSelectSize:
-		t.sizeCursor = handleListInput(t.sizeCursor, len(bracketSizes))
+		sizes := t.availableSizes()
+		t.sizeCursor = handleListInput(t.sizeCursor, len(sizes))
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-			t.bracketSize = bracketSizes[t.sizeCursor]
+			t.bracketSize = sizes[t.sizeCursor]
 			t.totalRounds = int(math.Log2(float64(t.bracketSize)))
 			t.seeds = make([]*engine.WrestlerCard, t.bracketSize)
 			t.results = make([][]*engine.WrestlerCard, t.totalRounds)
@@ -115,12 +128,26 @@ func (t *TournamentScreen) Update(g *Game) error {
 		}
 
 	case TournFinished:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if !t.embedded && (inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)) {
 			g.SetScreen(NewMenuScreen())
 		}
 	}
 
 	return nil
+}
+
+// availableSizes returns the bracket sizes the roster can fill without repeats.
+func (t *TournamentScreen) availableSizes() []int {
+	var sizes []int
+	for _, s := range bracketSizes {
+		if s <= len(t.roster) {
+			sizes = append(sizes, s)
+		}
+	}
+	if len(sizes) == 0 {
+		sizes = bracketSizes[:1]
+	}
+	return sizes
 }
 
 func (t *TournamentScreen) updateFillBracket(g *Game) {
@@ -130,19 +157,53 @@ func (t *TournamentScreen) updateFillBracket(g *Game) {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		if t.rosterCursor == len(g.Roster) {
-			// Auto-fill remaining slots
-			for i := range t.seeds {
-				if t.seeds[i] == nil {
-					t.seeds[i] = g.Roster[rand.Intn(len(g.Roster))] // #nosec G404 -- bracket auto-fill, not security-sensitive
-				}
-			}
+			t.autoFillSeeds(g)
 			t.startBracket()
 			return
 		}
-		t.seeds[t.fillCursor] = g.Roster[t.rosterCursor]
+		pick := g.Roster[t.rosterCursor]
+		if t.isSeeded(pick) {
+			return
+		}
+		t.seeds[t.fillCursor] = pick
 		t.fillCursor++
 		if t.fillCursor >= t.bracketSize {
 			t.startBracket()
+		}
+	}
+}
+
+func (t *TournamentScreen) isSeeded(card *engine.WrestlerCard) bool {
+	for _, s := range t.seeds {
+		if s == card {
+			return true
+		}
+	}
+	return false
+}
+
+// autoFillSeeds fills empty slots from the unseeded roster without repeats,
+// falling back to repeats only if the roster is smaller than the bracket.
+func (t *TournamentScreen) autoFillSeeds(g *Game) {
+	var pool []*engine.WrestlerCard
+	for _, w := range g.Roster {
+		if !t.isSeeded(w) {
+			pool = append(pool, w)
+		}
+	}
+	rand.Shuffle(len(pool), func(i, j int) { // #nosec G404 -- bracket auto-fill, not security-sensitive
+		pool[i], pool[j] = pool[j], pool[i]
+	})
+	next := 0
+	for i := range t.seeds {
+		if t.seeds[i] != nil {
+			continue
+		}
+		if next < len(pool) {
+			t.seeds[i] = pool[next]
+			next++
+		} else {
+			t.seeds[i] = g.Roster[rand.Intn(len(g.Roster))] // #nosec G404 -- roster smaller than bracket
 		}
 	}
 }
@@ -171,7 +232,25 @@ func (t *TournamentScreen) updateShowBracket(g *Game) {
 
 func (t *TournamentScreen) startCurrentMatch(g *Game) {
 	w1, w2 := t.getMatchup(t.currentRound, t.currentMatch)
+	if w1 == nil && w2 == nil {
+		t.advanceToNext(g)
+		return
+	}
 	if w1 == nil || w2 == nil {
+		// Missing entrant — the other wrestler advances on a bye
+		winner := w1
+		if winner == nil {
+			winner = w2
+		}
+		t.results[t.currentRound][t.currentMatch] = winner
+		t.lines = []string{
+			"============================================================",
+			fmt.Sprintf("  TOURNAMENT — Round %d, Match %d", t.currentRound+1, t.currentMatch+1),
+			fmt.Sprintf("  %s advances on a bye!", winner.Name),
+			"============================================================",
+		}
+		t.scroll = 0
+		t.phase = TournMatchResult
 		return
 	}
 
@@ -272,6 +351,10 @@ func (t *TournamentScreen) finishSubMatch(g *Game) {
 			winner = w2
 		}
 		t.results[t.currentRound][t.currentMatch] = winner
+
+		if t.onMatchDone != nil {
+			t.onMatchDone(result)
+		}
 
 		t.lines = append(t.lines, "")
 		t.lines = append(t.lines, "============================================================")
@@ -417,7 +500,7 @@ func (t *TournamentScreen) renderBracket() []string {
 			cell := grid[row][col]
 			if cell == "" {
 				// Check if we should draw a connector
-				connector := t.getConnector(row, col, height, totalSlots)
+				connector := t.getConnector(row, col, totalSlots)
 				sb.WriteString(fmt.Sprintf("%-*s", colWidth, connector))
 			} else {
 				sb.WriteString(fmt.Sprintf("%-*s", colWidth, cell))
@@ -433,30 +516,27 @@ func (t *TournamentScreen) renderBracket() []string {
 	return lines
 }
 
-func (t *TournamentScreen) getConnector(row, col, height, totalSlots int) string {
+// getConnector draws the lines joining a match's two feeder entries. The
+// feeders (seeds for round 0, previous round's winners after that) sit at
+// rows 4m*ps+ps-1 and 4m*ps+3ps-1 where ps = 1<<round; the winner cell sits
+// midway between them.
+func (t *TournamentScreen) getConnector(row, col, totalSlots int) string {
 	if col == 0 {
 		return ""
 	}
 
 	round := col - 1
-	spacing := 1 << (round + 1)
+	ps := 1 << round
 	matchesInRound := totalSlots / (1 << (round + 1))
 
 	for m := 0; m < matchesInRound; m++ {
-		topRow := m * spacing * 2
-		botRow := topRow + spacing
-		midRow := topRow + spacing - 1
+		src1 := 4*m*ps + ps - 1
+		src2 := src1 + 2*ps
 
-		if row == topRow || row == botRow {
+		if row == src1 || row == src2 {
 			return "---+"
 		}
-		if row > topRow && row < midRow {
-			return "   |"
-		}
-		if row == midRow {
-			return "---+"
-		}
-		if row > midRow && row < botRow {
+		if row > src1 && row < src2 {
 			return "   |"
 		}
 	}
@@ -500,7 +580,7 @@ func (t *TournamentScreen) drawSelectSize(screen *ebiten.Image, g *Game) {
 	DrawText(screen, "SELECT BRACKET SIZE:", Margin, y)
 	y += LineHeight * 2
 
-	for i, size := range bracketSizes {
+	for i, size := range t.availableSizes() {
 		prefix := "  "
 		if i == t.sizeCursor {
 			prefix = "> "
@@ -522,10 +602,23 @@ func (t *TournamentScreen) drawFillBracket(screen *ebiten.Image, g *Game) {
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight * 2
 
-	// Show filled seeds so far
+	// Show a window of seeds around the slot being filled
 	DrawText(screen, fmt.Sprintf("Filling seed %d of %d:", t.fillCursor+1, t.bracketSize), Margin, y)
 	y += LineHeight
-	for i := 0; i < t.bracketSize; i++ {
+	const maxSeedRows = 6
+	seedStart := 0
+	if t.fillCursor >= maxSeedRows {
+		seedStart = t.fillCursor - maxSeedRows + 1
+	}
+	seedEnd := seedStart + maxSeedRows
+	if seedEnd > t.bracketSize {
+		seedEnd = t.bracketSize
+	}
+	if seedStart > 0 {
+		DrawText(screen, "     ...", Margin, y)
+		y += LineHeight
+	}
+	for i := seedStart; i < seedEnd; i++ {
 		name := "(empty)"
 		if t.seeds[i] != nil {
 			name = t.seeds[i].Name
@@ -537,28 +630,42 @@ func (t *TournamentScreen) drawFillBracket(screen *ebiten.Image, g *Game) {
 		DrawText(screen, fmt.Sprintf("  %s [%2d] %s", marker, i+1, name), Margin, y)
 		y += LineHeight
 	}
+	if seedEnd < t.bracketSize {
+		DrawText(screen, "     ...", Margin, y)
+		y += LineHeight
+	}
 
 	y += LineHeight
 	DrawText(screen, "SELECT WRESTLER:", Margin, y)
 	y += LineHeight
 
-	// Show roster list
-	for i, card := range t.roster {
+	// Window the roster list so the cursor is always visible
+	statusY := g.screenH - LineHeight - Margin
+	visible := (statusY - y) / LineHeight
+	if visible < 1 {
+		visible = 1
+	}
+	listLen := len(t.roster) + 1
+	start := 0
+	if t.rosterCursor >= visible {
+		start = t.rosterCursor - visible + 1
+	}
+	for i := start; i < listLen && i < start+visible; i++ {
 		prefix := "  "
 		if i == t.rosterCursor {
 			prefix = "> "
 		}
-		DrawText(screen, prefix+card.Name, Margin, y)
+		label := "[Auto-Fill Remaining]"
+		if i < len(t.roster) {
+			label = t.roster[i].Name
+			if t.isSeeded(t.roster[i]) {
+				label += "  (already seeded)"
+			}
+		}
+		DrawText(screen, prefix+label, Margin, y)
 		y += LineHeight
 	}
-	// Auto-fill option
-	prefix := "  "
-	if t.rosterCursor == len(t.roster) {
-		prefix = "> "
-	}
-	DrawText(screen, prefix+"[Auto-Fill Remaining]", Margin, y)
 
-	statusY := g.screenH - LineHeight - Margin
 	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Back", Margin, statusY)
 }
 
@@ -585,7 +692,11 @@ func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {
 
 	var status string
 	if t.phase == TournFinished {
-		status = "[SPACE] Return to Menu  [UP/DOWN] Scroll  [ESC] Quit"
+		if t.embedded {
+			status = "[SPACE] Continue Show  [UP/DOWN] Scroll"
+		} else {
+			status = "[SPACE] Return to Menu  [UP/DOWN] Scroll  [ESC] Quit"
+		}
 	} else {
 		status = "[SPACE] Start Match  [UP/DOWN] Scroll  [ESC] Quit"
 	}
@@ -611,11 +722,11 @@ func (t *TournamentScreen) drawRunningMatch(screen *ebiten.Image, g *Game) {
 
 	var status string
 	if t.phase == TournMatchResult {
-		status = "[SPACE] Back to Bracket  [ESC] Quit"
+		status = "[SPACE] Back to Bracket"
 	} else if t.autoPlay {
-		status = "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Quit"
+		status = "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Skip"
 	} else {
-		status = "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Quit"
+		status = "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Skip"
 	}
 	DrawText(screen, status, Margin, statusBarY)
 }

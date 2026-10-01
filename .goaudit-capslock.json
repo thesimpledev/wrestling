@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "created_at": "2026-10-01T17:57:48.163232769Z",
+  "capslock_version": "v0.3.3",
+  "goos": "linux",
+  "goarch": "amd64",
+  "gosum_sha256": "c32d56bbb0ad6475dd5ad316b641826818086549e7c2ba7d5701d4988d92ca76",
+  "capabilities": {
+    "wrestling": [
+      "ARBITRARY_EXECUTION",
+      "CGO",
+      "EXEC",
+      "FILES",
+      "NETWORK",
+      "READ_SYSTEM_STATE",
+      "REFLECT",
+      "RUNTIME",
+      "SYSTEM_CALLS",
+      "UNANALYZED",
+      "UNSAFE_POINTER"
+    ],
+    "wrestling/internal/loader": [
+      "FILES",
+      "REFLECT",
+      "UNANALYZED",
+      "UNSAFE_POINTER"
+    ],
+    "wrestling/internal/storage": [
+      "FILES"
+    ],
+    "wrestling/internal/ui": [
+      "ARBITRARY_EXECUTION",
+      "CGO",
+      "EXEC",
+      "FILES",
+      "NETWORK",
+      "READ_SYSTEM_STATE",
+      "REFLECT",
+      "RUNTIME",
+      "UNANALYZED",
+      "UNSAFE_POINTER"
+    ]
+  }
+}

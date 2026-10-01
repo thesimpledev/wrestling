@@ -11,25 +11,26 @@ Compatible with Filsinger Games card systems including Champions of the Galaxy a
 
 ## Project Layout
 
-This repository is currently being ported from Go/Ebitengine to a native TypeScript web app.
-
-- `go/` — the existing Go + Ebitengine implementation (reference and currently-deployed build)
-- `web/` — the in-progress TypeScript port (not yet functional)
-
-Until the port reaches parity, the Go build under `go/` remains the canonical game.
+- `main.go`, `main_wasm.go`, `embed.go`: desktop and WebAssembly entry points and the embedded default cards
+- `internal/engine/`: match, chart and career rules
+- `internal/loader/`: card, injury and career loading
+- `internal/storage/`: desktop and browser storage backends
+- `internal/ui/`: Ebitengine screens
+- `data/`: wrestler cards and injury tables
+- `dist/web/`: page that hosts the WebAssembly build
+- `vendor/`: vendored dependencies
 
 ## Installation
 
 ```
 git clone <repo-url>
-cd wrestling/go
+cd wrestling
 go mod tidy
 ```
 
 ## Running
 
 ```
-cd go
 go run .
 ```
 

@@ -1,6 +1,6 @@
-go/wrestling
-go/dist/web/wrestling.wasm
-go/dist/web/wasm_exec.js
-go/data/career.json
+/wrestling
+dist/web/wrestling.wasm
+dist/web/wasm_exec.js
+data/career.json
 goaudit-report.json
-web/
+temp/

@@ -9,4 +9,4 @@ build-web:
     cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/web/
 
 serve: build-web
-    cd dist/web && python3 -m http.server 8080
+    go run ./cmd/serve dist/web

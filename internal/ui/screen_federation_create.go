@@ -209,7 +209,7 @@ func (fc *FederationCreateScreen) Draw(screen *ebiten.Image, g *Game) {
 		DrawText(screen, "[TYPE] Enter Name  [ENTER] Confirm  [ESC] Cancel", Margin, statusY)
 
 	case CreatePhaseRoster:
-		DrawText(screen, fmt.Sprintf("SELECT ROSTER (min 4) — %s:", fc.nameInput.Text), Margin, y)
+		DrawText(screen, fmt.Sprintf("SELECT ROSTER (min 4): %s:", fc.nameInput.Text), Margin, y)
 		y += LineHeight * 2
 
 		for i, card := range g.Roster {

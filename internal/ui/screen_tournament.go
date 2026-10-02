@@ -60,6 +60,9 @@ type TournamentScreen struct {
 	// The host screen owns navigation and match-result bookkeeping.
 	embedded    bool
 	onMatchDone func(result *engine.MatchResult)
+
+	// Results of every match, for closing out the fight card.
+	cardResults []*engine.MatchResult
 }
 
 func NewTournamentScreen(g *Game) *TournamentScreen {
@@ -244,7 +247,7 @@ func (t *TournamentScreen) startCurrentMatch(g *Game) {
 		t.results[t.currentRound][t.currentMatch] = winner
 		t.lines = []string{
 			"============================================================",
-			fmt.Sprintf("  TOURNAMENT — Round %d, Match %d", t.currentRound+1, t.currentMatch+1),
+			fmt.Sprintf("  TOURNAMENT: Round %d, Match %d", t.currentRound+1, t.currentMatch+1),
 			fmt.Sprintf("  %s advances on a bye!", winner.Name),
 			"============================================================",
 		}
@@ -266,7 +269,7 @@ func (t *TournamentScreen) startCurrentMatch(g *Game) {
 	t.scroll = 0
 	t.lines = []string{
 		"============================================================",
-		fmt.Sprintf("  TOURNAMENT — Round %d, Match %d", t.currentRound+1, t.currentMatch+1),
+		fmt.Sprintf("  TOURNAMENT: Round %d, Match %d", t.currentRound+1, t.currentMatch+1),
 		fmt.Sprintf("  %s  vs  %s", w1.Name, w2.Name),
 		"============================================================",
 		"",
@@ -333,14 +336,9 @@ func (t *TournamentScreen) updateRunningMatch(g *Game) {
 
 func (t *TournamentScreen) finishSubMatch(g *Game) {
 	result := t.match.Result()
+	t.cardResults = append(t.cardResults, result)
 
-	// Record injuries
-	if result != nil && result.InjuredWrestler != "" && result.InjuryCards > 0 {
-		g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
-	}
-	g.SaveInjuries()
-
-	if result != nil {
+	if result != nil && !result.Draw() {
 		// Find the winner card
 		var winner *engine.WrestlerCard
 		w1, w2 := t.getMatchup(t.currentRound, t.currentMatch)
@@ -377,14 +375,15 @@ func (t *TournamentScreen) advanceToNext(g *Game) {
 	t.currentMatch++
 
 	if t.currentMatch >= matchesInRound {
-		// Decrement injuries once per round
-		g.Injuries.DecrementAll()
-		g.SaveInjuries()
-
 		t.currentRound++
 		t.currentMatch = 0
 
 		if t.currentRound >= t.totalRounds {
+			// A whole tournament is one fight card. Inside a federation
+			// show the show itself closes out the card.
+			if !t.embedded {
+				g.EndFightCard(t.cardResults)
+			}
 			t.buildBracketLines()
 			t.phase = TournFinished
 			return

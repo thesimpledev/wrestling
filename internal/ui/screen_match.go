@@ -65,19 +65,19 @@ func NewTagMatchScreen(match *engine.Match, g *Game) *MatchScreen {
 func (ms *MatchScreen) RunMatch(g *Game) {
 	ms.match.ApplyInjuries(g.Injuries.IsInjured)
 	ms.events = ms.match.Run()
-	ms.saveInjuries(g)
+	g.EndFightCard([]*engine.MatchResult{ms.match.Result()})
 }
 
-// saveInjuries records any injuries from this match and decrements existing injuries.
-func (ms *MatchScreen) saveInjuries(g *Game) {
-	if result := ms.match.Result(); result != nil {
-		if result.InjuredWrestler != "" && result.InjuryCards > 0 {
-			g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
-		}
+// matchResultBanner is the line shown under a finished match.
+func matchResultBanner(result *engine.MatchResult) string {
+	switch {
+	case result == nil:
+		return "  MATCH ENDED IN A DRAW"
+	case result.Draw():
+		return "  NO WINNER: DOUBLE DISQUALIFICATION"
+	default:
+		return "  WINNER: " + result.Winner + " by " + result.Method
 	}
-	// Decrement existing injuries (one match = one fight card)
-	g.Injuries.DecrementAll()
-	g.SaveInjuries()
 }
 
 func (ms *MatchScreen) Update(g *Game) error {
@@ -138,11 +138,7 @@ func (ms *MatchScreen) Update(g *Game) error {
 			ms.state = MatchFinished
 			ms.lines = append(ms.lines, "")
 			ms.lines = append(ms.lines, "============================================================")
-			if result := ms.match.Result(); result != nil {
-				ms.lines = append(ms.lines, "  WINNER: "+result.Winner+" by "+result.Method)
-			} else {
-				ms.lines = append(ms.lines, "  MATCH ENDED IN A DRAW")
-			}
+			ms.lines = append(ms.lines, matchResultBanner(ms.match.Result()))
 			ms.lines = append(ms.lines, "============================================================")
 			ms.lines = append(ms.lines, "")
 			ms.lines = append(ms.lines, "Press [R] for rematch, [ESC] for menu")

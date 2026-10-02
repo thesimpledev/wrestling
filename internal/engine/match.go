@@ -26,6 +26,10 @@ type Side struct {
 	ActiveIndex  int           // Which wrestler is currently in the ring
 	PinSavesUsed int           // Max 2 per match in tag matches
 	Ally         *WrestlerCard // Optional ringside ally (enables interference/distraction)
+
+	// RegularPartners marks a tag team as regular partners, who tag out on
+	// defense more easily and may attempt pin saves.
+	RegularPartners bool
 }
 
 // Active returns the wrestler currently in the ring for this side.
@@ -35,13 +39,16 @@ func (s *Side) Active() *WrestlerState {
 
 // MatchResult describes how a match ended.
 type MatchResult struct {
-	WinningSide     int    // 0 or 1
-	Winner          string // Wrestler name
+	WinningSide     int    // 0 or 1, or -1 when there is no winner
+	Winner          string // Wrestler name, empty when there is no winner
 	Loser           string // Wrestler name
-	Method          string // "pinfall", "dq", "countout"
+	Method          string // "pinfall", "dq", "countout", "double dq"
 	FeudText        string // Post-match feud narration (if any)
 	InjuredWrestler string // Name of wrestler injured in feud
 	InjuryCards     int    // Fight cards of injury
+
+	SuspendedWrestlers []string // Names suspended after a feud gang attack
+	SuspensionCards    int      // Fight cards of suspension
 }
 
 // Match holds all state for a match in progress.
@@ -139,7 +146,7 @@ func (m *Match) Run() []Event {
 	for !m.over {
 		m.turnCount++
 		if m.turnCount > 500 {
-			m.emit(newEvent(EventMatchEnd, "Match ends in a draw — time limit exceeded!"))
+			m.emit(newEvent(EventMatchEnd, "Match ends in a draw: time limit exceeded!"))
 			m.over = true
 			break
 		}
@@ -323,12 +330,14 @@ func (m *Match) passesStatChecks(att, def *WrestlerState, move Move) bool {
 	return true
 }
 
-// resolveChartMove sends the defender to a chart, or into the cage wall when
-// an out of the ring move is rolled in a cage match.
+// resolveChartMove sends the defender to a chart. In a cage match nobody can
+// leave the ring, so out of the ring becomes "face into cage 3" and the
+// defender rolls on his Level 3 defense.
 func (m *Match) resolveChartMove(att, def *WrestlerState, chartType string) {
 	if m.Type == MatchCage && chartType == "ring" {
 		m.emit(newEvent(EventMove, "%s smashes %s face-first into the cage! - 3", att.Card.Name, def.Card.Name))
-		m.offLevel = 2
+		m.onOffense = m.sideOf(att)
+		m.resolveNormalDefense(att, def, Move{Name: "Face into Cage", Power: 3, DefLevel: 3})
 		return
 	}
 	m.resolveChart(att, def, chartType)
@@ -355,6 +364,9 @@ func (m *Match) resolveNormalDefense(att, def *WrestlerState, move Move) {
 // down is the offense level the attacker rolls on next.
 func (m *Match) resolveDefense(outcome DefenseOutcome) {
 	def := m.defender()
+	if m.tagOutOnDefense(def, outcome) {
+		return
+	}
 
 	switch outcome.Type {
 	case DefDazed, DefHurt:
@@ -377,7 +389,7 @@ func (m *Match) resolveDown(def *WrestlerState, outcome DefenseOutcome) {
 	defIdx := m.sideOf(def)
 	if outcome.Power == 3 && m.shouldUseInterference(defIdx) {
 		m.emit(newEvent(EventInterference, "%s calls for outside interference!", def.Card.Name))
-		m.resolveInterference(defIdx)
+		m.resolveInterference(defIdx, false)
 		return
 	}
 
@@ -387,9 +399,13 @@ func (m *Match) resolveDown(def *WrestlerState, outcome DefenseOutcome) {
 	}
 }
 
-// offerToLeaveRing handles the (lv) option. The simulator leaves when the
-// wrestler's Ring rating is A or B, and he rolls the chart on his own rating.
+// offerToLeaveRing handles the (lv) option, which does not exist in a cage.
+// The simulator leaves when the wrestler's Ring rating is A or B, and he
+// rolls the chart on his own rating.
 func (m *Match) offerToLeaveRing(def *WrestlerState) {
+	if m.Type == MatchCage {
+		return
+	}
 	m.emit(newEvent(EventChart, "%s has the option to leave the ring!", def.Card.Name))
 	if def.Card.Ring > RatingB {
 		return
@@ -404,7 +420,7 @@ func (m *Match) resolvePinPredicament(def *WrestlerState) {
 
 	if m.shouldUseInterference(defIdx) {
 		m.emit(newEvent(EventInterference, "%s calls for outside interference!", def.Card.Name))
-		m.resolveInterference(defIdx)
+		m.resolveInterference(defIdx, true)
 		return
 	}
 
@@ -421,42 +437,34 @@ func (m *Match) switchOffense() {
 
 // ─── CHART RESOLUTION ───────────────────────────────────────────────────────
 
-func (m *Match) resolveChart(att, def *WrestlerState, chartType string) {
-	var chart ChartTable
-	var rating Rating
-
+// chartFor returns a chart and the rating the wrestler rolling on it uses.
+func chartFor(chartType string, roller *WrestlerCard) (ChartTable, Rating, bool) {
 	switch chartType {
 	case "ropes":
-		chart = RopesChart
-		rating = def.Card.Ropes
+		return RopesChart, roller.Ropes, true
 	case "turnbuckle":
-		chart = TurnbuckleChart
-		rating = def.Card.Turnbuckle
+		return TurnbuckleChart, roller.Turnbuckle, true
 	case "ring":
-		chart = OutOfRingChart
-		rating = def.Card.Ring
+		return OutOfRingChart, roller.Ring, true
 	case "deathjump":
-		chart = DeathjumpChart
-		rating = def.Card.Deathjump
+		return DeathjumpChart, roller.Deathjump, true
 	default:
-		m.emit(newEvent(EventChart, "Unknown chart type: %s — continuing normally.", chartType))
+		return nil, RatingC, false
+	}
+}
+
+// resolveChart has def roll on a chart that att sent him to.
+func (m *Match) resolveChart(att, def *WrestlerState, chartType string) {
+	chart, rating, known := chartFor(chartType, def.Card)
+	if !known {
+		m.emit(newEvent(EventChart, "Unknown chart type %q, continuing normally.", chartType))
 		m.offLevel = 2
 		return
 	}
 
 	roll := m.rollTwo().total()
-
-	// Ringside ally interaction: when defender is thrown out of ring
-	// and attacker has an ally, ally can attack on rolls 6 or lower
-	if chartType == "ring" {
-		attSide := m.sideOf(att)
-		if m.Sides[attSide].Ally != nil && roll <= 6 {
-			m.resolveRingsideAllyAttack(att, def)
-			return
-		}
-		if m.Sides[attSide].Ally != nil && roll > 6 {
-			m.emit(newEvent(EventInterference, "The referee prevents the ringside ally from interfering!"))
-		}
+	if chartType == "ring" && m.ringsideAllyInterferes(att, def, roll) {
+		return
 	}
 
 	outcome := chart.Lookup(rating, roll)
@@ -486,473 +494,5 @@ func (m *Match) getRating(ws *WrestlerState, ratingType string) Rating {
 		return ws.Card.Deathjump
 	default:
 		return RatingC
-	}
-}
-
-// ─── PIN / FINISHER / DQ / COUNTOUT ─────────────────────────────────────────
-
-// rollDQ rolls disqualification for a wrestler. Returns true if DQ'd (match over).
-func (m *Match) rollDQ(ws *WrestlerState) bool {
-	if m.Type == MatchNoDQ {
-		m.emit(newEvent(EventDQ, "No disqualification in this match!"))
-		return false
-	}
-	if m.refDown {
-		m.emit(newEvent(EventDQ, "The referee is down — no disqualification possible!"))
-		return false
-	}
-
-	roll := m.rollTwo().total()
-	threshold := ws.Card.DQ
-	m.emit(newEvent(EventDQ, "%s rolls %d for disqualification (DQ rating: %d).", ws.Card.Name, roll, threshold))
-
-	if roll <= threshold {
-		m.emit(newEvent(EventDQ, "%s HAS BEEN DISQUALIFIED!", ws.Card.Name))
-		// The other wrestler wins
-		other := m.otherWrestler(ws)
-		m.endMatch(other, ws, "dq")
-		return true
-	}
-	m.emit(newEvent(EventDQ, "%s avoids disqualification!", ws.Card.Name))
-	return false
-}
-
-// rollDQWithThreshold rolls DQ against a specific threshold (used by charts like interference).
-func (m *Match) rollDQWithThreshold(ws *WrestlerState, threshold int) bool {
-	if m.Type == MatchNoDQ || m.refDown {
-		return false
-	}
-	roll := m.rollTwo().total()
-	m.emit(newEvent(EventDQ, "%s rolls %d for disqualification (threshold: %d).", ws.Card.Name, roll, threshold))
-	if roll <= threshold {
-		m.emit(newEvent(EventDQ, "%s HAS BEEN DISQUALIFIED!", ws.Card.Name))
-		other := m.otherWrestler(ws)
-		m.endMatch(other, ws, "dq")
-		return true
-	}
-	m.emit(newEvent(EventDQ, "%s avoids disqualification!", ws.Card.Name))
-	return false
-}
-
-// resolveCountOut checks if a wrestler is counted out (uses PIN rating as threshold).
-func (m *Match) resolveCountOut(att, def *WrestlerState) {
-	if m.Type == MatchNoDQ || m.Type == MatchCage {
-		m.emit(newEvent(EventCountOut, "No count-outs in this match type!"))
-		return
-	}
-	if m.refDown {
-		m.emit(newEvent(EventCountOut, "The referee is down — no count-out possible!"))
-		return
-	}
-
-	roll := m.rollTwo().total()
-	threshold := def.CurrentPIN
-	m.emit(newEvent(EventCountOut, "%s rolls %d for count-out (PIN rating: %d).", def.Card.Name, roll, threshold))
-
-	if roll <= threshold {
-		m.emit(newEvent(EventCountOut, "%s HAS BEEN COUNTED OUT!", def.Card.Name))
-		m.endMatch(att, def, "countout")
-	} else {
-		m.emit(newEvent(EventCountOut, "%s beats the count!", def.Card.Name))
-	}
-}
-
-// ─── HELPERS ────────────────────────────────────────────────────────────────
-
-func (m *Match) endMatch(winner, loser *WrestlerState, method string) {
-	m.over = true
-	m.result = &MatchResult{
-		WinningSide: m.sideOf(winner),
-		Winner:      winner.Card.Name,
-		Loser:       loser.Card.Name,
-		Method:      method,
-	}
-	m.emit(matchEndEvent(winner.Card.Name, loser.Card.Name, method))
-
-	// Feud table check
-	if m.IsFeud {
-		m.resolveFeudTable(winner, loser)
-	}
-}
-
-func (m *Match) sideOf(ws *WrestlerState) int {
-	for i, side := range m.Sides {
-		for _, w := range side.Wrestlers {
-			if w == ws {
-				return i
-			}
-		}
-	}
-	return 0
-}
-
-func (m *Match) otherWrestler(ws *WrestlerState) *WrestlerState {
-	side := m.sideOf(ws)
-	return m.Sides[1-side].Active()
-}
-
-// ─── TAG TEAM ───────────────────────────────────────────────────────────────
-
-// maybeTagOnOffense gives the attacking side a chance to tag in their partner.
-// AI logic: tag if current wrestler's PIN rating is getting high (fatigued).
-func (m *Match) maybeTagOnOffense() {
-	side := m.Sides[m.onOffense]
-	if len(side.Wrestlers) < 2 {
-		return
-	}
-	active := side.Active()
-	// Tag if fatigued (PIN has increased by 3+ from base)
-	if active.CurrentPIN >= active.Card.PINAdv+3 {
-		oldName := active.Card.Name
-		side.ActiveIndex = 1 - side.ActiveIndex
-		newName := side.Active().Card.Name
-		m.emit(newEvent(EventTagIn, "%s tags out! %s enters the ring!", oldName, newName))
-		// Stay at same offense level
-	}
-}
-
-// tryTagOnDefense attempts to tag out on defense. Roll 2d6, 4 or less = success.
-func (m *Match) tryTagOnDefense() bool {
-	defSideIdx := 1 - m.onOffense
-	side := m.Sides[defSideIdx]
-	if len(side.Wrestlers) < 2 {
-		return false
-	}
-
-	roll := m.rollTwo().total()
-	oldName := side.Active().Card.Name
-	m.emit(newEvent(EventTagAttempt, "%s reaches for a tag! Rolls %d (needs 4 or less)...", oldName, roll))
-
-	if roll <= 4 {
-		side.ActiveIndex = 1 - side.ActiveIndex
-		newName := side.Active().Card.Name
-		m.emit(newEvent(EventTagIn, "TAG MADE! %s enters the ring fresh!", newName))
-		// Successful tag = partner enters on Level 1 offense
-		m.onOffense = defSideIdx
-		m.offLevel = 0
-		return true
-	}
-	m.emit(newEvent(EventTagAttempt, "%s can't reach the tag!", oldName))
-	return false
-}
-
-// tryPinSave attempts a pin save in a tag match. Returns true if save was successful.
-func (m *Match) tryPinSave(pinnedSide int) bool {
-	side := m.Sides[pinnedSide]
-	if len(side.Wrestlers) < 2 {
-		return false
-	}
-	if side.PinSavesUsed >= 2 {
-		m.emit(newEvent(EventPinSave, "No more pin saves available — both already used!"))
-		return false
-	}
-
-	side.PinSavesUsed++
-	roll := m.rollTwo().total()
-	outcome := LookupPinSave(roll)
-	if outcome == nil {
-		return false
-	}
-
-	m.emit(newEvent(EventPinSave, "[Pin Save, roll %d] %s", roll, outcome.Text))
-
-	switch outcome.Type {
-	case PinSaveSaved:
-		// Partner saves! Opponent rolls L3 offense
-		m.onOffense = 1 - pinnedSide
-		m.offLevel = 2
-		return true
-
-	case PinSaveReversed:
-		// Reversed! Opponent rolls PIN instead
-		opp := m.Sides[1-pinnedSide].Active()
-		m.emit(newEvent(EventPin, "%s is now in a pinning predicament!", opp.Card.Name))
-		// Don't recurse with pin saves — just do a straight PIN
-		pinRoll := m.rollTwo().total()
-		if pinRoll <= opp.CurrentPIN {
-			m.emit(pinEvent(opp.Card.Name, pinRoll, opp.CurrentPIN, true))
-			m.endMatch(side.Active(), opp, "pinfall")
-		} else {
-			m.emit(pinEvent(opp.Card.Name, pinRoll, opp.CurrentPIN, false))
-			opp.CurrentPIN++
-			m.onOffense = 1 - pinnedSide
-			m.offLevel = 2
-		}
-		return true
-
-	case PinSaveFailed:
-		// Partner stopped — PIN proceeds normally
-		return false
-
-	case PinSaveBrawl:
-		// Wild brawl, possible double DQ
-		m.emit(newEvent(EventDQ, "A wild brawl erupts with all wrestlers!"))
-		dqRoll := m.rollTwo().total()
-		if dqRoll <= 4 {
-			m.emit(newEvent(EventDQ, "DOUBLE DISQUALIFICATION! Both teams are thrown out!"))
-			m.over = true
-			m.result = &MatchResult{Method: "double dq"}
-			m.emit(newEvent(EventMatchEnd, "The match ends in a DOUBLE DISQUALIFICATION!"))
-			return true
-		}
-		brawlRoll := m.rollOne()
-		if brawlRoll%2 == 0 {
-			m.emit(newEvent(EventChart, "Team %s wins the brawl!", side.Active().Card.Name))
-			m.onOffense = pinnedSide
-		} else {
-			m.emit(newEvent(EventChart, "The opponents win the brawl!"))
-			m.onOffense = 1 - pinnedSide
-		}
-		m.offLevel = 2
-		return true
-
-	case PinSaveInterference:
-		// Tag partner goes crazy — roll on the Interference Chart!
-		m.resolveInterference(pinnedSide)
-		return true
-	}
-	return false
-}
-
-// ─── OUTSIDE INTERFERENCE ────────────────────────────────────────────────────
-
-// shouldUseInterference decides if the AI should call for interference.
-func (m *Match) shouldUseInterference(sideIdx int) bool {
-	side := m.Sides[sideIdx]
-	if side.Ally == nil || m.interferenceUsed[sideIdx] {
-		return false
-	}
-	ws := side.Active()
-	// Use interference when PIN is very dangerous (>= 6) or fatigue is high
-	return ws.CurrentPIN >= 6
-}
-
-// resolveInterference handles outside interference for a side.
-// defIdx is the side index whose ally is interfering on their behalf.
-func (m *Match) resolveInterference(defIdx int) {
-	m.interferenceUsed[defIdx] = true
-	def := m.Sides[defIdx].Active()
-	att := m.Sides[1-defIdx].Active()
-	ally := m.Sides[defIdx].Ally
-
-	allyName := "An ally"
-	if ally != nil {
-		allyName = ally.Name
-	}
-
-	roll := m.rollTwo().total()
-	outcome := LookupInterference(roll)
-	if outcome == nil {
-		m.emit(newEvent(EventInterference, "Interference fails — nothing happens."))
-		return
-	}
-
-	m.emit(newEvent(EventInterference, "%s storms the ring!", allyName))
-	m.emit(newEvent(EventInterference, "[Interference Chart, roll %d] %s", roll, outcome.Text))
-
-	switch outcome.Type {
-	case InterfDoubleTeam:
-		att.CurrentPIN++
-		m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d!", att.Card.Name, att.CurrentPIN))
-		if m.rollDQWithThreshold(def, outcome.DQThreshold) {
-			return
-		}
-		m.emit(newEvent(EventPin, "%s covers %s for the pin!", def.Card.Name, att.Card.Name))
-		m.resolvePIN(def, att)
-
-	case InterfFinisher:
-		if m.rollDQWithThreshold(def, outcome.DQThreshold) {
-			return
-		}
-		m.emit(newEvent(EventFinisher, "%s hits the %s on %s!", def.Card.Name, def.Card.Finisher.Name, att.Card.Name))
-		pinRoll := m.rollTwo().total()
-		threshold := att.CurrentPIN + def.Card.Finisher.Rating
-		if pinRoll <= threshold {
-			m.emit(pinEvent(att.Card.Name, pinRoll, threshold, true))
-			m.endMatch(def, att, "pinfall")
-		} else {
-			m.emit(pinEvent(att.Card.Name, pinRoll, threshold, false))
-			att.CurrentPIN++
-			m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d!", att.Card.Name, att.CurrentPIN))
-			m.onOffense = m.sideOf(att)
-			m.offLevel = 2
-		}
-
-	case InterfAttackAndPin:
-		if m.rollDQWithThreshold(def, outcome.DQThreshold) {
-			return
-		}
-		m.emit(newEvent(EventPin, "%s covers %s for the pin!", def.Card.Name, att.Card.Name))
-		m.resolvePIN(def, att)
-
-	case InterfAttackAndL3:
-		if m.rollDQWithThreshold(def, outcome.DQThreshold) {
-			return
-		}
-		m.emit(newEvent(EventInterference, "%s recovers and attacks %s!", def.Card.Name, att.Card.Name))
-		m.onOffense = defIdx
-		m.offLevel = 2
-
-	case InterfBrawl:
-		if m.rollDQWithThreshold(def, outcome.DQThreshold) {
-			return
-		}
-		brawlRoll := m.rollOne()
-		if brawlRoll%2 == 0 {
-			m.emit(newEvent(EventInterference, "%s flattens %s! %s takes over! (roll %d)", allyName, att.Card.Name, def.Card.Name, brawlRoll))
-			m.onOffense = defIdx
-		} else {
-			m.emit(newEvent(EventInterference, "%s smashes %s and takes over! (roll %d)", att.Card.Name, allyName, brawlRoll))
-			m.onOffense = 1 - defIdx
-		}
-		m.offLevel = 2
-
-	case InterfDistract:
-		m.emit(newEvent(EventDistraction, "%s distracts the referee, breaking the pin count! The referee orders him to leave!", allyName))
-		m.onOffense = 1 - defIdx
-		m.offLevel = 2
-
-	case InterfBackfire:
-		m.emit(newEvent(EventInterference, "%s storms the ring but %s wins the brawl and throws him out!", allyName, att.Card.Name))
-		m.emit(newEvent(EventPin, "%s performs a big move and pins %s!", att.Card.Name, def.Card.Name))
-		m.resolvePIN(att, def)
-
-	case InterfBackfireFinish:
-		m.emit(newEvent(EventInterference, "%s storms the ring but %s wins the brawl and throws him out!", allyName, att.Card.Name))
-		m.emit(newEvent(EventFinisher, "%s motions to the crowd — %s time!", att.Card.Name, att.Card.Finisher.Name))
-		pinRoll := m.rollTwo().total()
-		threshold := def.CurrentPIN + att.Card.Finisher.Rating
-		if pinRoll <= threshold {
-			m.emit(pinEvent(def.Card.Name, pinRoll, threshold, true))
-			m.endMatch(att, def, "pinfall")
-		} else {
-			m.emit(pinEvent(def.Card.Name, pinRoll, threshold, false))
-			def.CurrentPIN++
-			m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d!", def.Card.Name, def.CurrentPIN))
-			m.onOffense = defIdx
-			m.offLevel = 2
-		}
-	}
-}
-
-// ─── DISTRACTION ─────────────────────────────────────────────────────────────
-
-// tryDistraction attempts to distract the referee before a PIN roll.
-// Returns true if distraction was successful (PIN is avoided).
-func (m *Match) tryDistraction(pinnedIdx int) bool {
-	side := m.Sides[pinnedIdx]
-	pinned := side.Active()
-
-	if m.distractionUsed[pinnedIdx] || side.Ally == nil {
-		return false
-	}
-
-	// AI decision: use distraction if PIN is moderately dangerous
-	if pinned.CurrentPIN < 4 {
-		return false
-	}
-
-	// Don't use distraction if interference is still available and PIN is very high
-	// (save distraction for moderate danger, interference for high danger)
-	if pinned.CurrentPIN >= 6 && !m.interferenceUsed[pinnedIdx] {
-		return false
-	}
-
-	m.distractionUsed[pinnedIdx] = true
-
-	allyName := side.Ally.Name
-	distRating := pinned.Card.Distractor
-
-	roll := m.rollTwo().total()
-	m.emit(newEvent(EventDistraction, "%s tries to distract the referee! (roll %d, needs %d or lower)", allyName, roll, distRating))
-
-	if roll <= distRating {
-		m.emit(newEvent(EventDistraction, "The distraction works! The referee is distracted and the pin count is broken!"))
-		pinned.CurrentPIN++
-		m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d from fatigue.", pinned.Card.Name, pinned.CurrentPIN))
-		m.onOffense = 1 - pinnedIdx
-		m.offLevel = 2
-		return true
-	}
-
-	m.emit(newEvent(EventDistraction, "The distraction fails! The referee orders %s to leave!", allyName))
-	return false
-}
-
-// ─── RINGSIDE ALLY ───────────────────────────────────────────────────────────
-
-// resolveRingsideAllyAttack handles when an attacker's ringside ally attacks
-// the defender who has been thrown out of the ring.
-func (m *Match) resolveRingsideAllyAttack(att, def *WrestlerState) {
-	attSide := m.sideOf(att)
-	allyName := m.Sides[attSide].Ally.Name
-
-	m.emit(newEvent(EventInterference, "%s is attacked outside the ring by %s!", def.Card.Name, allyName))
-	m.emit(newEvent(EventInterference, "%s smashes %s into the steel post!", allyName, def.Card.Name))
-	m.emit(newEvent(EventDQ, "%s and %s may be disqualified!", att.Card.Name, allyName))
-
-	// DQ threshold is always 6 regardless of wrestler's DQ rating
-	if m.rollDQWithThreshold(att, 6) {
-		return
-	}
-
-	m.emit(newEvent(EventInterference, "%s tosses %s back into the ring to the waiting hands of %s!", allyName, def.Card.Name, att.Card.Name))
-	m.onOffense = m.sideOf(att)
-	m.offLevel = 2 // Level 3
-}
-
-// ─── FEUD TABLE ──────────────────────────────────────────────────────────────
-
-// resolveFeudTable is called after a feud match ends. Rolls for doubles,
-// and if doubles come up, resolves the feud table outcome.
-func (m *Match) resolveFeudTable(winner, loser *WrestlerState) {
-	postMatch := m.rollTwo()
-	if !postMatch.doubles() {
-		m.emit(newEvent(EventMatchEnd, "Post-match: no doubles rolled (%d) — the feud simmers down... for now.", postMatch.total()))
-		return
-	}
-
-	m.emit(newEvent(EventMatchEnd, ""))
-	m.emit(newEvent(EventMatchEnd, "DOUBLES ROLLED (%d)! THE FEUD CONTINUES AFTER THE BELL!", postMatch.total()))
-
-	feudRoll := m.rollTwo().total()
-	outcome := LookupFeud(feudRoll)
-	if outcome == nil {
-		return
-	}
-
-	m.emit(newEvent(EventMatchEnd, "[Feud Table, roll %d] %s", feudRoll, outcome.Text))
-	m.result.FeudText = outcome.Text
-
-	switch outcome.Type {
-	case FeudAttackedByLoser:
-		// Winner is injured by the loser's post-match attack
-		m.result.InjuredWrestler = winner.Card.Name
-		m.result.InjuryCards = outcome.InjuryDays
-	case FeudAllyDoubleTeam:
-		// No injury — ally challenges for next match
-		m.emit(newEvent(EventMatchEnd, "A new rivalry is born!"))
-	case FeudPostMatchAttack:
-		// Loser is injured
-		m.result.InjuredWrestler = loser.Card.Name
-		m.result.InjuryCards = outcome.InjuryDays
-	case FeudFourManBrawl:
-		// Wild brawl — no direct injury, leads to tag match booking
-		m.emit(newEvent(EventMatchEnd, "The commissioner books a tag team super match!"))
-	case FeudOpponentAlly:
-		// Winner is injured by opponent's ally
-		m.result.InjuredWrestler = winner.Card.Name
-		m.result.InjuryCards = outcome.InjuryDays
-	case FeudGangAttack:
-		// Roll 1d6 for injury duration
-		injuryRoll := m.rollOne()
-		suspensionRoll := m.rollOne()
-		m.emit(newEvent(EventMatchEnd, "Injury roll: %d fight cards! Suspension roll: %d fight cards!", injuryRoll, suspensionRoll))
-		m.result.InjuredWrestler = winner.Card.Name
-		m.result.InjuryCards = injuryRoll
-	}
-
-	if m.result.InjuredWrestler != "" {
-		m.emit(newEvent(EventMatchEnd, "%s IS INJURED FOR %d FIGHT CARD(S)!", m.result.InjuredWrestler, m.result.InjuryCards))
 	}
 }

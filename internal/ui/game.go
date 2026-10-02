@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 
@@ -44,14 +45,48 @@ type Game struct {
 
 func NewGame(roster []*engine.WrestlerCard, store storage.Store) *Game {
 	g := &Game{
-		Roster:   roster,
-		Store:    store,
-		scale:    2,
-		in:       ebitenInput{},
-		Injuries: loader.LoadInjuries(store),
+		Roster: roster,
+		Store:  store,
+		scale:  2,
+		in:     ebitenInput{},
 	}
+	injuries, err := loader.LoadInjuries(store)
+	if err != nil {
+		g.SetNotice("Saved injuries could not be read and will be replaced on the next save.")
+	}
+	g.Injuries = injuries
 	g.screen = NewMenuScreen()
 	return g
+}
+
+// EndFightCard closes out one fight card: every running injury and
+// suspension counts down by one card, then the injuries and suspensions that
+// happened on this card are recorded at their full length, and all is saved.
+func (g *Game) EndFightCard(results []*engine.MatchResult) {
+	g.Injuries.DecrementAll()
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
+		for _, name := range result.SuspendedWrestlers {
+			g.Injuries.RecordSuspension(name, result.SuspensionCards)
+		}
+	}
+	g.SaveInjuries()
+}
+
+// statusMarkers is the injury or suspension tag shown after a wrestler's
+// name in lists.
+func statusMarkers(g *Game, name string) string {
+	markers := ""
+	if g.Injuries.IsInjured(name) {
+		markers += fmt.Sprintf("  [INJURED %d]", g.Injuries.InjuryCards(name))
+	}
+	if g.Injuries.IsSuspended(name) {
+		markers += fmt.Sprintf("  [SUSPENDED %d]", g.Injuries.SuspensionCards(name))
+	}
+	return markers
 }
 
 func (g *Game) SetScreen(s Screen) {

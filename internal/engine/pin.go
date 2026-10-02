@@ -2,17 +2,28 @@ package engine
 
 // resolvePIN handles a pin attempt on pinned by pinner.
 func (m *Match) resolvePIN(pinner, pinned *WrestlerState) {
+	m.resolvePINWithBonus(pinner, pinned, 0)
+}
+
+// resolvePINWithBonus handles a pin attempt where bonus (a finisher rating)
+// is added to the pinned wrestler's PIN rating.
+func (m *Match) resolvePINWithBonus(pinner, pinned *WrestlerState, bonus int) {
 	if m.refDown {
 		m.uncountedPin(pinner, pinned, "PIN ATTEMPT, but the referee is still down! No count!")
 		return
 	}
-	m.pinAttempt(pinner, pinned, 0)
+	m.pinAttempt(pinner, pinned, bonus)
 }
 
 // pinAttempt rolls the pinned wrestler's PIN rating plus bonus. A kick-out
 // leaves the wrestler on offense rolling on Level 3.
 func (m *Match) pinAttempt(pinner, pinned *WrestlerState, bonus int) {
-	if !m.pinRoll(pinned, bonus) {
+	roll := m.rollTwo()
+	number := pinned.CurrentPIN + bonus
+	isPinned := roll.total() <= number
+	m.emit(pinEvent(pinned.Card.Name, roll.total(), number, isPinned))
+
+	if !isPinned {
 		m.kickOut(pinner, pinned)
 		return
 	}
@@ -20,18 +31,8 @@ func (m *Match) pinAttempt(pinner, pinned *WrestlerState, bonus int) {
 		return
 	}
 	if !m.over {
-		m.endMatch(pinner, pinned, "pinfall")
+		m.endMatch(pinner, pinned, "pinfall", roll)
 	}
-}
-
-// pinRoll rolls two dice against the pinned wrestler's PIN rating plus bonus
-// and reports whether he stays down.
-func (m *Match) pinRoll(pinned *WrestlerState, bonus int) bool {
-	roll := m.rollTwo().total()
-	threshold := pinned.CurrentPIN + bonus
-	isPinned := roll <= threshold
-	m.emit(pinEvent(pinned.Card.Name, roll, threshold, isPinned))
-	return isPinned
 }
 
 func (m *Match) kickOut(pinner, pinned *WrestlerState) {

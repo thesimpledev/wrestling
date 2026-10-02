@@ -45,6 +45,9 @@ type CareerShowScreen struct {
 	// Results summary
 	results []string
 
+	// Results of every match on the show, for closing out the fight card.
+	cardResults []*engine.MatchResult
+
 	// For battle royals embedded in career
 	brScreen *BattleRoyalScreen
 	inBR     bool
@@ -166,7 +169,7 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 	card1, ok1 := rosterMap[s1Name]
 	card2, ok2 := rosterMap[s2Name]
 	if !ok1 || !ok2 {
-		cs.results = append(cs.results, fmt.Sprintf("%d. CANCELLED — invalid wrestlers", cs.currentIdx+1))
+		cs.results = append(cs.results, fmt.Sprintf("%d. CANCELLED: invalid wrestlers", cs.currentIdx+1))
 		cs.currentIdx++
 		cs.startMatch(g)
 		return
@@ -198,7 +201,7 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 
 	cs.lines = []string{
 		"============================================================",
-		fmt.Sprintf("  Match %d of %d — %s%s", cs.currentIdx+1, len(cs.card), typeStr, titleStr),
+		fmt.Sprintf("  Match %d of %d: %s%s", cs.currentIdx+1, len(cs.card), typeStr, titleStr),
 		fmt.Sprintf("  %s  vs  %s", s1Name, s2Name),
 		"============================================================",
 		"",
@@ -239,6 +242,7 @@ func (cs *CareerShowScreen) simulateBR(g *Game) {
 		cs.fed.RecordResult(cs.brScreen.champion.Name, eliminated, "elimination", false)
 		cs.fed.AddRivalry(cs.brScreen.champion.Name, eliminated, 1)
 	}
+	cs.cardResults = append(cs.cardResults, cs.brScreen.cardResults...)
 	cs.fed.TitleShotEarned = cs.brScreen.champion.Name
 
 	cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, cs.brScreen.champion.Name))
@@ -276,10 +280,8 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 			ts.shown = len(ts.events)
 
 			result := match.Result()
-			if result != nil {
-				if result.InjuredWrestler != "" && result.InjuryCards > 0 {
-					g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
-				}
+			cs.cardResults = append(cs.cardResults, result)
+			if result != nil && !result.Draw() {
 				var winner *engine.WrestlerCard
 				if result.Winner == w1.Name {
 					winner = w1
@@ -294,11 +296,9 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 			}
 			ts.currentMatch++
 		}
-		g.Injuries.DecrementAll()
 		ts.currentRound++
 		ts.currentMatch = 0
 	}
-	g.SaveInjuries()
 
 	winner := ts.results[ts.totalRounds-1][0]
 	winnerName := "Unknown"
@@ -320,12 +320,9 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 func (cs *CareerShowScreen) processMatchResult(g *Game) {
 	result := cs.match.Result()
 	booked := cs.card[cs.currentIdx]
+	cs.cardResults = append(cs.cardResults, result)
 
-	if result != nil {
-		if result.InjuredWrestler != "" && result.InjuryCards > 0 {
-			g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
-		}
-
+	if result != nil && !result.Draw() {
 		cs.fed.RecordResult(result.Winner, result.Loser, result.Method, booked.IsTitle)
 
 		cs.fed.AddRivalry(result.Winner, result.Loser, 1)
@@ -360,19 +357,15 @@ func (cs *CareerShowScreen) processMatchResult(g *Game) {
 		cs.results = append(cs.results, fmt.Sprintf("%d. DRAW", cs.currentIdx+1))
 	}
 
-	g.Injuries.DecrementAll()
-	g.SaveInjuries()
-
 	cs.lines = append(cs.lines, "")
-	if result != nil {
-		cs.lines = append(cs.lines, "============================================================")
-		cs.lines = append(cs.lines, fmt.Sprintf("  WINNER: %s by %s", result.Winner, result.Method))
-		cs.lines = append(cs.lines, "============================================================")
-	}
+	cs.lines = append(cs.lines, "============================================================")
+	cs.lines = append(cs.lines, matchResultBanner(result))
+	cs.lines = append(cs.lines, "============================================================")
 	cs.scrollToBottom(g)
 }
 
 func (cs *CareerShowScreen) finishShow(g *Game) {
+	g.EndFightCard(cs.cardResults)
 	cs.fed.AdvanceWeek()
 
 	// Check if any champion needs to vacate (defense overdue)
@@ -429,6 +422,7 @@ func (cs *CareerShowScreen) updateBR(g *Game) error {
 		for _, eliminated := range br.eliminated {
 			cs.fed.RecordResult(br.champion.Name, eliminated, "elimination", false)
 		}
+		cs.cardResults = append(cs.cardResults, br.cardResults...)
 		cs.fed.TitleShotEarned = br.champion.Name
 		cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, br.champion.Name))
 		// Don't reuse the same key press to advance past the winner screen
@@ -455,6 +449,7 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 	}
 
 	if ts.phase == TournFinished && oldPhase != TournFinished {
+		cs.cardResults = append(cs.cardResults, ts.cardResults...)
 		winner := ts.results[ts.totalRounds-1][0]
 		if winner != nil {
 			booked := cs.card[cs.currentIdx]
@@ -584,7 +579,7 @@ func (cs *CareerShowScreen) drawComplete(screen *ebiten.Image, g *Game) {
 	y := Margin
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight
-	DrawText(screen, fmt.Sprintf("  %s — RESULTS", cs.fed.ShowName()), Margin, y)
+	DrawText(screen, fmt.Sprintf("  %s: RESULTS", cs.fed.ShowName()), Margin, y)
 	y += LineHeight
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight * 2

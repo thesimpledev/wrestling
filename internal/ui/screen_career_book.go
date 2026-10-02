@@ -256,7 +256,7 @@ func (bs *CareerBookScreen) drawCard(screen *ebiten.Image, g *Game, y int) {
 }
 
 func (bs *CareerBookScreen) drawEditType(screen *ebiten.Image, g *Game, y int) {
-	DrawText(screen, fmt.Sprintf("EDIT MATCH %d — SELECT TYPE:", bs.editIdx+1), Margin, y)
+	DrawText(screen, fmt.Sprintf("EDIT MATCH %d: SELECT TYPE:", bs.editIdx+1), Margin, y)
 	y += LineHeight * 2
 
 	for i, name := range editableTypeNames {
@@ -273,7 +273,7 @@ func (bs *CareerBookScreen) drawEditType(screen *ebiten.Image, g *Game, y int) {
 }
 
 func (bs *CareerBookScreen) drawEditSide(screen *ebiten.Image, g *Game, y int, label string) {
-	DrawText(screen, fmt.Sprintf("EDIT MATCH %d — SELECT %s:", bs.editIdx+1, label), Margin, y)
+	DrawText(screen, fmt.Sprintf("EDIT MATCH %d: SELECT %s:", bs.editIdx+1, label), Margin, y)
 	y += LineHeight * 2
 
 	for i, card := range bs.roster {

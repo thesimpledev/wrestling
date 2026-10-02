@@ -30,6 +30,9 @@ type BattleRoyalScreen struct {
 	// The host screen owns navigation.
 	embedded bool
 
+	// Results of every round, for closing out the fight card.
+	cardResults []*engine.MatchResult
+
 	// Sub-match display
 	match    *engine.Match
 	events   []engine.Event
@@ -117,7 +120,7 @@ func (b *BattleRoyalScreen) startNextMatch(g *Game) {
 	b.scroll = 0
 	b.lines = []string{
 		"============================================================",
-		fmt.Sprintf("  BATTLE ROYAL — Round %d of %d", b.nextIdx, len(b.wrestlers)-1),
+		fmt.Sprintf("  BATTLE ROYAL: Round %d of %d", b.nextIdx, len(b.wrestlers)-1),
 		fmt.Sprintf("  %s  vs  %s", b.champion.Name, challenger.Name),
 		"============================================================",
 		"",
@@ -176,13 +179,9 @@ func (b *BattleRoyalScreen) updateMatch(g *Game) {
 
 func (b *BattleRoyalScreen) finishSubMatch(g *Game) {
 	result := b.match.Result()
+	b.cardResults = append(b.cardResults, result)
 
-	// Record injuries from this sub-match
-	if result != nil && result.InjuredWrestler != "" && result.InjuryCards > 0 {
-		g.Injuries.RecordInjury(result.InjuredWrestler, result.InjuryCards)
-	}
-
-	if result != nil {
+	if result != nil && !result.Draw() {
 		b.eliminated = append(b.eliminated, result.Loser)
 
 		// Determine new champion
@@ -206,16 +205,16 @@ func (b *BattleRoyalScreen) finishSubMatch(g *Game) {
 	} else {
 		// Draw — champion stays
 		b.lines = append(b.lines, "")
-		b.lines = append(b.lines, "  Match ended in a draw — champion retains!")
+		b.lines = append(b.lines, "  Match ended in a draw: champion retains!")
 	}
 
 	b.nextIdx++
 	b.scrollToBottom(g)
 
-	// Decrement injuries once for the entire battle royal
-	if b.nextIdx >= len(b.wrestlers) {
-		g.Injuries.DecrementAll()
-		g.SaveInjuries()
+	// A whole battle royal is one fight card. Inside a federation show the
+	// show itself is the fight card and closes it out.
+	if b.nextIdx >= len(b.wrestlers) && !b.embedded {
+		g.EndFightCard(b.cardResults)
 	}
 
 	b.phase = BRMatchResult
@@ -245,7 +244,7 @@ func (b *BattleRoyalScreen) drawIntro(screen *ebiten.Image, g *Game) {
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight * 2
 
-	DrawText(screen, "Gauntlet-style elimination — two fight, loser out,", Margin, y)
+	DrawText(screen, "Gauntlet-style elimination: two fight, loser out,", Margin, y)
 	y += LineHeight
 	DrawText(screen, "winner stays and faces next challenger!", Margin, y)
 	y += LineHeight * 2

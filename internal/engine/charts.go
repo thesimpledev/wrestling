@@ -403,7 +403,7 @@ var InterferenceChart = []InterferenceOutcome{
 	{MinRoll: 10, MaxRoll: 10, Type: InterfBackfire,
 		Text: "Your ally storms the ring but the opponent wins the ensuing brawl and throws him out!"},
 	{MinRoll: 11, MaxRoll: 12, Type: InterfBackfireFinish,
-		Text: "Your ally storms the ring but the opponent wins the brawl! He motions to the crowd — finisher time!"},
+		Text: "Your ally storms the ring but the opponent wins the brawl! He motions to the crowd: finisher time!"},
 }
 
 func LookupInterference(roll int) *InterferenceOutcome {
@@ -434,21 +434,26 @@ type FeudOutcome struct {
 	Type       FeudOutcomeType
 	InjuryDays int // Fight cards of injury
 	Text       string
+
+	// A row that involves an ally is rolled again when that ally is not at
+	// ringside.
+	NeedsYourAlly     bool
+	NeedsOpponentAlly bool
 }
 
 var FeudTable = []FeudOutcome{
 	{MinRoll: 2, MaxRoll: 4, Type: FeudAttackedByLoser, InjuryDays: 2,
 		Text: "You celebrate your victory! The opponent recovers and attacks you from behind with his finisher! YOU ARE INJURED FOR TWO FIGHT CARDS."},
-	{MinRoll: 5, MaxRoll: 6, Type: FeudAllyDoubleTeam,
+	{MinRoll: 5, MaxRoll: 6, Type: FeudAllyDoubleTeam, NeedsYourAlly: true,
 		Text: "One of your allies storms the ring and you double-team the opponent! He challenges your ally to a match!"},
 	{MinRoll: 7, MaxRoll: 7, Type: FeudPostMatchAttack, InjuryDays: 1,
 		Text: "You continue your attack after the bell! OPPONENT IS INJURED FOR ONE FIGHT CARD."},
-	{MinRoll: 8, MaxRoll: 9, Type: FeudFourManBrawl,
-		Text: "You are attacked by an ally of the opponent. Your ally rushes to the ring — a wild four-man brawl erupts!"},
-	{MinRoll: 10, MaxRoll: 10, Type: FeudOpponentAlly, InjuryDays: 2,
+	{MinRoll: 8, MaxRoll: 9, Type: FeudFourManBrawl, NeedsYourAlly: true, NeedsOpponentAlly: true,
+		Text: "You are attacked by an ally of the opponent. Your ally rushes to the ring and a wild four-man brawl erupts!"},
+	{MinRoll: 10, MaxRoll: 10, Type: FeudOpponentAlly, InjuryDays: 2, NeedsOpponentAlly: true,
 		Text: "You are attacked by the opponent's ally! They double team you! YOU ARE INJURED FOR TWO FIGHT CARDS."},
-	{MinRoll: 11, MaxRoll: 12, Type: FeudGangAttack,
-		Text: "You call your allies to ringside. Total destruction ensues! ROLL ONE DIE FOR INJURY AND SUSPENSION!"},
+	{MinRoll: 11, MaxRoll: 12, Type: FeudGangAttack, NeedsYourAlly: true,
+		Text: "You call your allies to ringside. Total destruction ensues! THE OPPONENT IS INJURED AND YOU AND YOUR ALLIES ARE SUSPENDED!"},
 }
 
 func LookupFeud(roll int) *FeudOutcome {

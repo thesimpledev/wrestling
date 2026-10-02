@@ -255,6 +255,8 @@ func (m *MenuScreen) Update(g *Game) error {
 				g.Roster[m.selected[0]], g.Roster[m.selected[1]],
 				g.Roster[m.selected[2]], g.Roster[m.selected[3]],
 			)
+			match.Sides[0].RegularPartners = true
+			match.Sides[1].RegularPartners = true
 			ms := NewTagMatchScreen(match, g)
 			ms.RunMatch(g)
 			g.SetScreen(ms)
@@ -360,7 +362,7 @@ func (m *MenuScreen) Draw(screen *ebiten.Image, g *Game) {
 		m.drawAllyList(screen, g, y)
 
 	case PhaseMultiSelect:
-		DrawText(screen, "BATTLE ROYAL — SELECT WRESTLERS (min 3):", Margin, y)
+		DrawText(screen, "BATTLE ROYAL: SELECT WRESTLERS (min 3):", Margin, y)
 		y += LineHeight * 2
 		count := 0
 		for i, card := range g.Roster {

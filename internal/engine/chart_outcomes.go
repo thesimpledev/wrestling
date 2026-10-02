@@ -100,10 +100,7 @@ func (m *Match) chartThrowerDQ(c chartCall) {
 
 func (m *Match) chartBothDQ(c chartCall) {
 	m.emit(newEvent(EventDQ, "Both wrestlers may be disqualified!"))
-	if m.rollDQ(c.thrower) {
-		return
-	}
-	if m.rollDQ(c.roller) {
+	if m.rollBothDQ(c.thrower, c.roller) {
 		return
 	}
 	m.brawl(c.roller, c.thrower)
@@ -121,7 +118,14 @@ func (m *Match) brawl(evenWinner, oddWinner *WrestlerState) {
 	m.setOffense(winner, 3)
 }
 
+// chartCountOut is the row where the roller may be counted out. Where
+// count-outs do not apply the row is ignored and the thrower carries on.
 func (m *Match) chartCountOut(c chartCall) {
+	if !m.countOutsApply() {
+		m.emit(newEvent(EventCountOut, "No count-out possible, so the fight carries on!"))
+		m.setOffense(c.thrower, 3)
+		return
+	}
 	m.emit(newEvent(EventCountOut, "%s may be counted out!", c.roller.Card.Name))
 	m.resolveCountOut(c.thrower, c.roller)
 	if m.over {
@@ -182,5 +186,5 @@ func (m *Match) chartRefDown(c chartCall) {
 }
 
 func (m *Match) chartThrowerOnChart(c chartCall) {
-	m.resolveChart(c.roller, c.thrower, c.outcome.ChartRef)
+	m.resolveChartMove(c.roller, c.thrower, c.outcome.ChartRef)
 }

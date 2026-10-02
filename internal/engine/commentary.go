@@ -14,7 +14,7 @@ func pick(texts []string) string {
 var dazedTexts = []string{
 	"%s is dazed but still on his feet!",
 	"%s staggers but refuses to go down!",
-	"%s shakes it off — not enough to put him away!",
+	"%s shakes it off: not enough to put him away!",
 	"%s absorbs the blow and stays standing!",
 	"%s is stunned but hangs on!",
 	"%s wobbles but won't go down that easy!",
@@ -22,7 +22,7 @@ var dazedTexts = []string{
 
 var hurtTexts = []string{
 	"%s is hurt! That one connected!",
-	"%s takes a nasty shot — he's in trouble!",
+	"%s takes a nasty shot: he's in trouble!",
 	"%s is reeling from that devastating blow!",
 	"%s is in pain! The punishment continues!",
 	"%s feels that one! He's hurting!",
@@ -35,7 +35,7 @@ var downTexts = []string{
 	"%s crashes to the mat! He's not getting up easily!",
 	"%s is laid out! The crowd is on their feet!",
 	"%s is down and nearly out!",
-	"%s hits the canvas — devastating!",
+	"%s hits the canvas: devastating!",
 }
 
 var reversalTexts = []string{
@@ -67,17 +67,17 @@ func CommentaryDefense(wrestler string, outcome DefenseType) string {
 // ─── PIN COMMENTARY ──────────────────────────────────────────────────────────
 
 var pinSuccessTexts = []string{
-	"PIN ATTEMPT! %s rolls %d (needed %d to kick out) — HE'S BEEN PINNED! 1... 2... 3!",
-	"THE COVER! %s rolls %d (needed %d) — IT'S OVER! THREE COUNT!",
-	"HE COVERS HIM! %s rolls %d (needed %d) — THAT'S IT! THE PIN IS GOOD!",
-	"INTO THE COVER! %s rolls %d (needed %d) — ONE! TWO! THREE! HE GOT HIM!",
+	"PIN ATTEMPT! %s rolls %d (needed %d to kick out): HE'S BEEN PINNED! 1... 2... 3!",
+	"THE COVER! %s rolls %d (needed %d): IT'S OVER! THREE COUNT!",
+	"HE COVERS HIM! %s rolls %d (needed %d): THAT'S IT! THE PIN IS GOOD!",
+	"INTO THE COVER! %s rolls %d (needed %d): ONE! TWO! THREE! HE GOT HIM!",
 }
 
 var pinFailTexts = []string{
-	"PIN ATTEMPT! %s rolls %d (needed %d to kick out) — HE KICKS OUT!",
-	"THE COVER! %s rolls %d (needed %d) — NO! HE POWERS OUT AT TWO!",
-	"HE GOES FOR THE PIN! %s rolls %d (needed %d) — KICKOUT! Just barely!",
-	"COVER! %s rolls %d (needed %d) — NOT ENOUGH! He survives!",
+	"PIN ATTEMPT! %s rolls %d (needed %d to kick out): HE KICKS OUT!",
+	"THE COVER! %s rolls %d (needed %d): NO! HE POWERS OUT AT TWO!",
+	"HE GOES FOR THE PIN! %s rolls %d (needed %d): KICKOUT! Just barely!",
+	"COVER! %s rolls %d (needed %d): NOT ENOUGH! He survives!",
 }
 
 // CommentaryPin returns varied pin attempt commentary.
@@ -91,11 +91,11 @@ func CommentaryPin(wrestler string, roll, threshold int, pinned bool) string {
 // ─── FINISHER COMMENTARY ─────────────────────────────────────────────────────
 
 var finisherSetupTexts = []string{
-	"%s signals to the crowd — it's %s time!!",
+	"%s signals to the crowd: it's %s time!!",
 	"%s is going for it! THE %s!!",
 	"THIS IS IT! %s sets up the %s!!",
 	"The crowd ERUPTS! %s is going for the %s!!",
-	"%s has that look in his eye — %s incoming!!",
+	"%s has that look in his eye: %s incoming!!",
 }
 
 // CommentaryFinisher returns varied finisher setup commentary.
@@ -106,17 +106,17 @@ func CommentaryFinisher(attacker, finisherName string) string {
 // ─── MATCH START/END COMMENTARY ─────────────────────────────────────────────
 
 var matchStartTexts = []string{
-	"The bell rings! %s vs %s — HERE WE GO!",
+	"The bell rings! %s vs %s: HERE WE GO!",
 	"The match is underway! %s faces off against %s!",
-	"AND WE'RE OFF! %s vs %s — this is going to be a war!",
-	"The crowd is electric! %s vs %s — LET'S DO THIS!",
+	"AND WE'RE OFF! %s vs %s: this is going to be a war!",
+	"The crowd is electric! %s vs %s: LET'S DO THIS!",
 }
 
 var matchEndTexts = []string{
 	"MATCH OVER! %s defeats %s by %s!",
 	"IT'S ALL OVER! %s wins by %s over %s!",
 	"THERE IT IS! %s has done it! Victory by %s over %s!",
-	"THE WINNER BY %s — %s! What a match against %s!",
+	"THE WINNER BY %s: %s! What a match against %s!",
 }
 
 // CommentaryMatchStart returns varied match start commentary.
@@ -136,7 +136,7 @@ func CommentaryMatchEnd(winner, loser, method string) string {
 	case 2:
 		return fmt.Sprintf("THERE IT IS! %s has done it! Victory by %s over %s!", winner, method, loser)
 	default:
-		return fmt.Sprintf("THE WINNER BY %s — %s! What a match against %s!", method, winner, loser)
+		return fmt.Sprintf("THE WINNER BY %s: %s! What a match against %s!", method, winner, loser)
 	}
 }
 

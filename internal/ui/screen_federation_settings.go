@@ -137,7 +137,7 @@ func (fs *FederationSettingsScreen) Draw(screen *ebiten.Image, g *Game) {
 
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight
-	DrawText(screen, fmt.Sprintf("          FEDERATION SETTINGS — %s", strings.ToUpper(fs.fed.Name)), Margin, y)
+	DrawText(screen, fmt.Sprintf("          FEDERATION SETTINGS: %s", strings.ToUpper(fs.fed.Name)), Margin, y)
 	y += LineHeight
 	DrawText(screen, "============================================================", Margin, y)
 	y += LineHeight * 2

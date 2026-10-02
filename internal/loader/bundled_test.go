@@ -3,6 +3,7 @@ package loader
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"wrestling/internal/engine"
@@ -32,6 +33,41 @@ func loadBundled(t *testing.T) map[string]*engine.WrestlerCard {
 		cards[card.Name] = card
 	}
 	return cards
+}
+
+func readmeExampleCard(t *testing.T) []byte {
+	t.Helper()
+	readme, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatalf("reading the README: %v", err)
+	}
+	const open, closing = "```yaml\n", "\n```"
+	start := strings.Index(string(readme), open)
+	if start < 0 {
+		t.Fatal("the README has no yaml example")
+	}
+	body := string(readme)[start+len(open):]
+	end := strings.Index(body, closing)
+	if end < 0 {
+		t.Fatal("the README's yaml example is not closed")
+	}
+	return []byte(body[:end])
+}
+
+func TestReadmeExampleCardLoadsWithoutProblems(t *testing.T) {
+	card, err := ParseCard(readmeExampleCard(t))
+	if err != nil {
+		t.Fatalf("the README's example card does not load: %v", err)
+	}
+	if problems := CardProblems(card); len(problems) != 0 {
+		t.Fatalf("the README's example card uses instructions the game does not know: %v", problems)
+	}
+	if card.Offense[1][4].DQNumber != 7 || !card.Offense[0][3].HasTag(engine.TagChartChoice) {
+		t.Fatalf("the README's example card lost its instructions: %+v, %+v", card.Offense[1][4], card.Offense[0][3])
+	}
+	if !card.Offense[2][5].IsFinisher() || card.Offense[2][5].Name != card.Finisher.Name {
+		t.Fatalf("the README's finisher %q is not the capital-letter move on Level 3", card.Finisher.Name)
+	}
 }
 
 // The rulebook rates agility and power from -5 (excellent) to +5 (poor).

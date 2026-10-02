@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -258,12 +257,26 @@ var ratingFields = []ratingField{
 
 var ratingsByLetter = map[string]engine.Rating{"A": engine.RatingA, "B": engine.RatingB, "C": engine.RatingC}
 
+// fieldError is a problem with one editor field. Its text is shown to the
+// user and starts with the field's label as it appears on screen.
+type fieldError struct {
+	label string
+	err   error
+}
+
+func (e fieldError) Error() string { return e.label + ": " + e.err.Error() }
+func (e fieldError) Unwrap() error { return e.err }
+
+func emptyField(label string) error {
+	return fmt.Errorf("%s cannot be empty", label)
+}
+
 // buildCard turns the fields into a card. The error is the first field that
 // does not hold a valid value.
 func (e *CardEditorScreen) buildCard() (*engine.WrestlerCard, error) {
 	card := &engine.WrestlerCard{Name: strings.TrimSpace(e.fieldValue("Name"))}
 	if card.Name == "" {
-		return nil, errors.New("Name cannot be empty")
+		return nil, emptyField("Name")
 	}
 	card.Finisher.Name = strings.TrimSpace(e.fieldValue("Finisher Name"))
 
@@ -303,10 +316,10 @@ func (e *CardEditorScreen) readNumbers(card *engine.WrestlerCard) error {
 
 func (e *CardEditorScreen) readFinisher(card *engine.WrestlerCard) error {
 	if card.Finisher.Name == "" {
-		return errors.New("Finisher Name cannot be empty")
+		return emptyField("Finisher Name")
 	}
 	if err := applyFinisherRoll(&card.Finisher, e.fieldValue(finisherRollLabel)); err != nil {
-		return fmt.Errorf("Finisher Roll: %w", err)
+		return fieldError{label: "Finisher Roll", err: err}
 	}
 	return nil
 }
@@ -316,7 +329,7 @@ func (e *CardEditorScreen) readOffense(card *engine.WrestlerCard) error {
 		for slot := range card.Offense[lvl] {
 			move, err := parseMoveLine(e.fieldValue(moveLabel(lvl+1, slot+1)))
 			if err != nil {
-				return fmt.Errorf("L%d Move %d: %w", lvl+1, slot+1, err)
+				return fieldError{label: fmt.Sprintf("L%d Move %d", lvl+1, slot+1), err: err}
 			}
 			card.Offense[lvl][slot] = move
 		}
@@ -329,7 +342,7 @@ func (e *CardEditorScreen) readDefense(card *engine.WrestlerCard) error {
 		for slot := range card.Defense[lvl] {
 			outcome, err := parseDefenseLine(e.fieldValue(defenseLabel(lvl+1, slot+1)))
 			if err != nil {
-				return fmt.Errorf("L%d Def %d: %w", lvl+1, slot+1, err)
+				return fieldError{label: fmt.Sprintf("L%d Def %d", lvl+1, slot+1), err: err}
 			}
 			if e.base != nil && outcome.Type == engine.DefPIN {
 				outcome.PINThreshold = e.base.Defense[lvl][slot].PINThreshold

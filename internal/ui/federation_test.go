@@ -349,7 +349,7 @@ func bookScreen(card []engine.BookedMatch, belts []string, names ...string) (*Ga
 	return g, in, book
 }
 
-func TestEditingAMatchBlocksWrestlersAlreadyBooked(t *testing.T) {
+func TestEditingAMatchBlocksBookedAndSuspendedWrestlers(t *testing.T) {
 	card := []engine.BookedMatch{singles("A", "B"), singles("C", "D")}
 	g, in, book := bookScreen(card, []string{"World"}, "A", "B", "C", "D", "E", "F")
 	g.Injuries.RecordSuspension("E", 2)
@@ -375,26 +375,54 @@ func TestEditingAMatchBlocksWrestlersAlreadyBooked(t *testing.T) {
 	if len(book.editPicks) != 1 || book.editPicks[0] != "F" {
 		t.Fatalf("picks: %v, want F", book.editPicks)
 	}
+}
 
+func TestEditingAMatchBlocksPickingTheSameWrestlerTwice(t *testing.T) {
+	card := []engine.BookedMatch{singles("A", "B"), singles("C", "D")}
+	g, in, book := bookScreen(card, []string{"World"}, "A", "B", "C", "D", "E", "F")
+
+	enter(t, g, in)
+	enter(t, g, in)
+	down(t, g, in, 5)
+	enter(t, g, in)
 	if book.editCursor != 0 {
-		t.Fatalf("cursor on %d, want the first free wrestler (A)", book.editCursor)
+		t.Fatalf("cursor on %d after the first pick, want the first free wrestler (A)", book.editCursor)
 	}
+
 	down(t, g, in, 5)
 	enter(t, g, in)
 	if len(book.editPicks) != 1 {
 		t.Fatalf("F was picked twice for one match: %v", book.editPicks)
 	}
-	press(t, g, in, ebiten.KeyUp)
-	press(t, g, in, ebiten.KeyUp)
-	press(t, g, in, ebiten.KeyUp)
-	press(t, g, in, ebiten.KeyUp)
-	enter(t, g, in)
 
+	for step := 0; step < 4; step++ {
+		press(t, g, in, ebiten.KeyUp)
+	}
+	enter(t, g, in)
 	if book.phase != BookViewCard {
 		t.Fatalf("phase %d, want the card view after the last pick", book.phase)
 	}
 	if got := book.card[0]; got.Side1[0] != "F" || got.Side2[0] != "B" {
 		t.Fatalf("match 1 is %v vs %v, want F vs B", got.Side1, got.Side2)
+	}
+}
+
+func TestDashboardShowsChampionsContenderAndRivalries(t *testing.T) {
+	g, _, fed, save := fedGame([]string{"World", "TV"}, pinCards("A", "B", "C", "D")...)
+	fed.Championships[0].Champion = "A"
+	fed.TitleShotEarned = "B"
+	fed.AddRivalry("C", "D", 4)
+	g.Injuries.RecordInjury("A", 2)
+
+	screen := NewCareerScreen(fed, save)
+	text := strings.Join(screen.dashboardLines(g), "\n")
+	for _, want := range []string{
+		"TEST FED", "Week 1", "World: A  [INJURED 2]", "TV: VACANT",
+		"#1 Contender: B", "C vs D (intensity: 4)", "> Next Show", "  Quit Federation",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("dashboard does not contain %q:\n%s", want, text)
+		}
 	}
 }
 

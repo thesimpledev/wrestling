@@ -84,21 +84,25 @@ func TestPPVBooksATournamentForAVacantMainTitle(t *testing.T) {
 		t.Run(fmt.Sprintf("roster %d with %d belts", tc.roster, len(tc.belts)), func(t *testing.T) {
 			for attempt := 0; attempt < 20; attempt++ {
 				fed, cards := ppvFederation(tc.roster, tc.belts...)
-				card := fed.AutoBook(cards)
-				if len(card) == 0 {
-					t.Fatal("empty card")
-				}
-				mainEvent := card[len(card)-1]
-				if !mainEvent.IsTournament || !mainEvent.IsTitle || mainEvent.TitleIndex != 0 {
-					t.Fatalf("last match is not the title tournament: %+v", mainEvent)
-				}
-				if mainEvent.TournSize != tc.wantSize || len(mainEvent.TournSeeds) != tc.wantSize {
-					t.Fatalf("tournament size %d with %d seeds, want %d", mainEvent.TournSize, len(mainEvent.TournSeeds), tc.wantSize)
-				}
-				wantNoWrestlerTwice(t, card)
+				wantTitleTournamentLast(t, fed.AutoBook(cards), tc.wantSize)
 			}
 		})
 	}
+}
+
+func wantTitleTournamentLast(t *testing.T, card []BookedMatch, size int) {
+	t.Helper()
+	if len(card) == 0 {
+		t.Fatal("empty card")
+	}
+	mainEvent := card[len(card)-1]
+	if !mainEvent.IsTournament || !mainEvent.IsTitle || mainEvent.TitleIndex != 0 {
+		t.Fatalf("last match is not the title tournament: %+v", mainEvent)
+	}
+	if mainEvent.TournSize != size || len(mainEvent.TournSeeds) != size {
+		t.Fatalf("tournament size %d with %d seeds, want %d", mainEvent.TournSize, len(mainEvent.TournSeeds), size)
+	}
+	wantNoWrestlerTwice(t, card)
 }
 
 func TestPPVBooksEveryTitleBeforeAnythingElse(t *testing.T) {

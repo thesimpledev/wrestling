@@ -67,64 +67,60 @@ func (cs *CareerScreen) Update(g *Game) error {
 
 func (cs *CareerScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
-	y := Margin
+	drawLines(screen, cs.dashboardLines(g))
+	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Federation Select", Margin, g.screenH-LineHeight-Margin)
+}
 
-	DrawText(screen, "============================================================", Margin, y)
-	y += LineHeight
-	title := fmt.Sprintf("                %s", strings.ToUpper(cs.fed.Name))
-	DrawText(screen, title, Margin, y)
-	y += LineHeight
-	DrawText(screen, "============================================================", Margin, y)
-	y += LineHeight * 2
-
-	// Week & show info
-	DrawText(screen, fmt.Sprintf("Week %d", cs.fed.Week), Margin, y)
-	y += LineHeight
-
-	DrawText(screen, fmt.Sprintf("Next: %s", cs.fed.ShowName()), Margin, y)
-	y += LineHeight * 2
-
-	// All championships
-	for _, ch := range cs.fed.Championships {
-		if ch.Champion == "" {
-			DrawText(screen, fmt.Sprintf("%s: VACANT", ch.Name), Margin, y)
-		} else {
-			DrawText(screen, fmt.Sprintf("%s: %s%s", ch.Name, ch.Champion, statusMarkers(g, ch.Champion)), Margin, y)
-		}
-		y += LineHeight
+// dashboardLines is the federation dashboard: the week, the champions, the
+// earned title shot, the active rivalries, and the menu.
+func (cs *CareerScreen) dashboardLines(g *Game) []string {
+	lines := []string{
+		showDivider,
+		fmt.Sprintf("                %s", strings.ToUpper(cs.fed.Name)),
+		showDivider,
+		"",
+		fmt.Sprintf("Week %d", cs.fed.Week),
+		fmt.Sprintf("Next: %s", cs.fed.ShowName()),
+		"",
 	}
-
-	// Title shot earned
+	lines = append(lines, cs.championLines(g)...)
+	lines = append(lines, "")
 	if cs.fed.TitleShotEarned != "" {
-		y += LineHeight
-		DrawText(screen, fmt.Sprintf("#1 Contender: %s (earned title shot)", cs.fed.TitleShotEarned), Margin, y)
+		lines = append(lines, fmt.Sprintf("#1 Contender: %s (earned title shot)", cs.fed.TitleShotEarned))
 	}
-	y += LineHeight
+	lines = append(lines, cs.rivalryLines()...)
+	lines = append(lines, "")
 
-	// Active rivalries
-	rivals := cs.fed.ActiveRivals()
-	if len(rivals) > 0 {
-		y += LineHeight
-		DrawText(screen, "ACTIVE RIVALRIES:", Margin, y)
-		y += LineHeight
-		for _, pair := range rivals {
-			score := cs.fed.RivalryScore(pair[0], pair[1])
-			DrawText(screen, fmt.Sprintf("  %s vs %s (intensity: %d)", pair[0], pair[1], score), Margin, y)
-			y += LineHeight
-		}
-	}
-	y += LineHeight
-
-	// Menu options
 	for i, label := range careerMenuLabels {
 		prefix := "  "
 		if i == cs.cursor {
 			prefix = "> "
 		}
-		DrawText(screen, prefix+label, Margin, y)
-		y += LineHeight
+		lines = append(lines, prefix+label)
 	}
+	return lines
+}
 
-	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Federation Select", Margin, statusY)
+func (cs *CareerScreen) championLines(g *Game) []string {
+	lines := make([]string, 0, len(cs.fed.Championships))
+	for _, ch := range cs.fed.Championships {
+		if ch.Champion == "" {
+			lines = append(lines, fmt.Sprintf("%s: VACANT", ch.Name))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s%s", ch.Name, ch.Champion, statusMarkers(g, ch.Champion)))
+	}
+	return lines
+}
+
+func (cs *CareerScreen) rivalryLines() []string {
+	rivals := cs.fed.ActiveRivals()
+	if len(rivals) == 0 {
+		return nil
+	}
+	lines := []string{"", "ACTIVE RIVALRIES:"}
+	for _, pair := range rivals {
+		lines = append(lines, fmt.Sprintf("  %s vs %s (intensity: %d)", pair[0], pair[1], cs.fed.RivalryScore(pair[0], pair[1])))
+	}
+	return lines
 }

@@ -168,40 +168,47 @@ func TestPinNeedsNoNumber(t *testing.T) {
 
 func TestFinisherRollField(t *testing.T) {
 	cases := []struct {
-		text    string
-		isRoll  bool
-		min     int
-		max     int
-		wantErr string
+		text string
+		want engine.Finisher
 	}{
-		{"", false, 0, 0, ""},
-		{"  ", false, 0, 0, ""},
-		{"2-6", true, 2, 6, ""},
-		{" 3 - 5 ", true, 3, 5, ""},
-		{"6", false, 0, 0, "min-max"},
-		{"0-6", false, 0, 0, "1 to 6"},
-		{"2-7", false, 0, 0, "1 to 6"},
-		{"5-2", false, 0, 0, "smaller number first"},
-		{"a-b", false, 0, 0, "min-max"},
+		{"", engine.Finisher{}},
+		{"  ", engine.Finisher{}},
+		{"2-6", engine.Finisher{IsRoll: true, RollMin: 2, RollMax: 6}},
+		{" 3 - 5 ", engine.Finisher{IsRoll: true, RollMin: 3, RollMax: 5}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.text, func(t *testing.T) {
 			var f engine.Finisher
-			err := applyFinisherRoll(&f, tc.text)
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("error %v, want one containing %q", err, tc.wantErr)
-				}
-				return
-			}
-			if err != nil {
+			if err := applyFinisherRoll(&f, tc.text); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if f.IsRoll != tc.isRoll || f.RollMin != tc.min || f.RollMax != tc.max {
-				t.Fatalf("finisher %+v", f)
+			if f != tc.want {
+				t.Fatalf("finisher %+v, want %+v", f, tc.want)
 			}
 		})
 	}
+}
+
+func TestFinisherRollFieldErrors(t *testing.T) {
+	cases := map[string]string{
+		"6":   "min-max",
+		"0-6": "1 to 6",
+		"2-7": "1 to 6",
+		"5-2": "smaller number first",
+		"a-b": "min-max",
+	}
+	for text, want := range cases {
+		t.Run(text, func(t *testing.T) {
+			var f engine.Finisher
+			err := applyFinisherRoll(&f, text)
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error %v, want one containing %q", err, want)
+			}
+		})
+	}
+}
+
+func TestFinisherRollFieldText(t *testing.T) {
 	if got := formatFinisherRoll(engine.Finisher{IsRoll: true, RollMin: 2, RollMax: 6}); got != "2-6" {
 		t.Fatalf("format: %q", got)
 	}

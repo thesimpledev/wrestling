@@ -75,60 +75,61 @@ func NewTournamentScreen(g *Game) *TournamentScreen {
 
 func (t *TournamentScreen) Update(g *Game) error {
 	if g.in.JustPressed(ebiten.KeyEscape) && !t.embedded {
-		switch t.phase {
-		case TournSelectSize:
-			g.SetScreen(NewMenuScreen())
-		case TournFillBracket:
-			t.phase = TournSelectSize
-			t.fillCursor = 0
-			t.rosterCursor = 0
-		case TournRunningMatch:
-			// Fast-forward the rest of the match instead of losing the tournament
-			for t.shown < len(t.events) {
-				t.lines = append(t.lines, t.events[t.shown].Text)
-				t.shown++
-			}
-			t.finishSubMatch(g)
-		case TournMatchResult:
-			t.advanceToNext(g)
-		default: // TournShowBracket, TournFinished — quit tournament
-			g.SetScreen(NewMenuScreen())
-		}
+		t.escape(g)
 		return nil
 	}
 
 	switch t.phase {
 	case TournSelectSize:
-		sizes := t.availableSizes()
-		t.sizeCursor = handleListInput(g.in, t.sizeCursor, len(sizes))
-		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
-			t.setBracketSize(sizes[t.sizeCursor])
-			t.phase = TournFillBracket
-			t.fillCursor = 0
-			t.rosterCursor = 0
-		}
-
+		t.updateSelectSize(g)
 	case TournFillBracket:
 		t.updateFillBracket(g)
-
 	case TournShowBracket:
 		t.updateShowBracket(g)
-
 	case TournRunningMatch:
 		t.updateRunningMatch(g)
-
 	case TournMatchResult:
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
+		if confirmPressed(g.in) {
 			t.advanceToNext(g)
 		}
-
 	case TournFinished:
-		if !t.embedded && (g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter)) {
+		if !t.embedded && confirmPressed(g.in) {
 			g.SetScreen(NewMenuScreen())
 		}
 	}
-
 	return nil
+}
+
+// escape steps back during setup, hurries a running tournament along, and
+// leaves it from the bracket view.
+func (t *TournamentScreen) escape(g *Game) {
+	switch t.phase {
+	case TournFillBracket:
+		t.phase = TournSelectSize
+		t.fillCursor = 0
+		t.rosterCursor = 0
+	case TournRunningMatch:
+		for t.shown < len(t.events) {
+			t.lines = append(t.lines, t.events[t.shown].Text)
+			t.shown++
+		}
+		t.finishSubMatch(g)
+	case TournMatchResult:
+		t.advanceToNext(g)
+	default:
+		g.SetScreen(NewMenuScreen())
+	}
+}
+
+func (t *TournamentScreen) updateSelectSize(g *Game) {
+	sizes := t.availableSizes()
+	t.sizeCursor = handleListInput(g.in, t.sizeCursor, len(sizes))
+	if confirmPressed(g.in) {
+		t.setBracketSize(sizes[t.sizeCursor])
+		t.phase = TournFillBracket
+		t.fillCursor = 0
+		t.rosterCursor = 0
+	}
 }
 
 func (t *TournamentScreen) setBracketSize(size int) {

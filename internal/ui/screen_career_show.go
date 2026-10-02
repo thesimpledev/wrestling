@@ -543,53 +543,54 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 }
 
 func (cs *CareerShowScreen) updateRunning(g *Game) {
+	cs.updatePlaybackControls(g)
+	if !cs.shouldAdvance(g) || cs.shown >= len(cs.events) {
+		return
+	}
+	cs.lines = append(cs.lines, cs.events[cs.shown].Text)
+	cs.shown++
+	cs.scrollToBottom(g)
+
+	if cs.shown >= len(cs.events) {
+		cs.processMatchResult(g)
+		cs.phase = ShowMatchResult
+	}
+}
+
+func (cs *CareerShowScreen) updatePlaybackControls(g *Game) {
 	if g.in.JustPressed(ebiten.KeyA) {
 		cs.autoPlay = !cs.autoPlay
 	}
-	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
-		if cs.speed > 5 {
-			cs.speed -= 5
-		}
+	faster := g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd)
+	if faster && cs.speed > fastestAutoPlay {
+		cs.speed -= autoPlayStep
 	}
 	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
-		cs.speed += 5
+		cs.speed += autoPlayStep
 	}
+	if g.in.Pressed(ebiten.KeyUp) && cs.scroll > 0 {
+		cs.scroll--
+	}
+	if g.in.Pressed(ebiten.KeyDown) && cs.scroll < cs.maxScroll(g) {
+		cs.scroll++
+	}
+}
 
-	if g.in.Pressed(ebiten.KeyUp) {
-		if cs.scroll > 0 {
-			cs.scroll--
-		}
+// shouldAdvance reports whether the next line of the match should be shown
+// on this tick: on a key press, or when the auto-play timer comes round.
+func (cs *CareerShowScreen) shouldAdvance(g *Game) bool {
+	if confirmPressed(g.in) {
+		return true
 	}
-	if g.in.Pressed(ebiten.KeyDown) {
-		max := cs.maxScroll(g)
-		if cs.scroll < max {
-			cs.scroll++
-		}
+	if !cs.autoPlay {
+		return false
 	}
-
-	advance := false
-	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-		advance = true
+	cs.ticker++
+	if cs.ticker < cs.speed {
+		return false
 	}
-	if cs.autoPlay {
-		cs.ticker++
-		if cs.ticker >= cs.speed {
-			cs.ticker = 0
-			advance = true
-		}
-	}
-
-	if advance && cs.shown < len(cs.events) {
-		e := cs.events[cs.shown]
-		cs.lines = append(cs.lines, e.Text)
-		cs.shown++
-		cs.scrollToBottom(g)
-
-		if cs.shown >= len(cs.events) {
-			cs.processMatchResult(g)
-			cs.phase = ShowMatchResult
-		}
-	}
+	cs.ticker = 0
+	return true
 }
 
 // ─── Drawing ────────────────────────────────────────────────────────────────

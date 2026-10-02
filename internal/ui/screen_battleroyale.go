@@ -66,32 +66,27 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 		return nil
 	}
 
+	if b.phase == BRRunningMatch {
+		b.updateMatch(g)
+		return nil
+	}
+	if !confirmPressed(g.in) {
+		return nil
+	}
+
 	switch b.phase {
 	case BRIntro:
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			b.champion = b.wrestlers[0]
-			b.phase = BRShowingBracket
-		}
-
+		b.champion = b.wrestlers[0]
+		b.phase = BRShowingBracket
 	case BRShowingBracket:
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			b.startNextMatch(g)
-		}
-
-	case BRRunningMatch:
-		b.updateMatch(g)
-
+		b.startNextMatch(g)
 	case BRMatchResult:
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			b.leaveMatchResult()
-		}
-
+		b.leaveMatchResult()
 	case BRFinished:
-		if !b.embedded && (g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter)) {
+		if !b.embedded {
 			g.SetScreen(NewMenuScreen())
 		}
 	}
-
 	return nil
 }
 

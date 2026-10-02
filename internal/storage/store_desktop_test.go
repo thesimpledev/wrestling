@@ -48,13 +48,14 @@ func TestDesktopStoreKeepsCardWritesInsideTheCardDirectory(t *testing.T) {
 	}
 }
 
+type jsonFile struct {
+	name string
+	load func(*DesktopStore) ([]byte, error)
+	save func(*DesktopStore, []byte) error
+	file string
+}
+
 func TestDesktopStoreJSONFiles(t *testing.T) {
-	type jsonFile struct {
-		name string
-		load func(*DesktopStore) ([]byte, error)
-		save func(*DesktopStore, []byte) error
-		file string
-	}
 	files := []jsonFile{
 		{"injuries", (*DesktopStore).LoadInjuriesJSON, (*DesktopStore).SaveInjuriesJSON, "injuries.json"},
 		{"career", (*DesktopStore).LoadCareerJSON, (*DesktopStore).SaveCareerJSON, "career.json"},
@@ -62,21 +63,26 @@ func TestDesktopStoreJSONFiles(t *testing.T) {
 	}
 	for _, f := range files {
 		t.Run(f.name, func(t *testing.T) {
-			store, root := newTestStore(t)
-			data, err := f.load(store)
-			if err != nil || data != nil {
-				t.Fatalf("before any save: got %q, %v, want nil, nil", data, err)
-			}
-			if err := f.save(store, []byte(`{"k":1}`)); err != nil {
-				t.Fatalf("save: %v", err)
-			}
-			data, err = f.load(store)
-			if err != nil || string(data) != `{"k":1}` {
-				t.Fatalf("after save: got %q, %v", data, err)
-			}
-			if _, err := os.Stat(filepath.Join(root, f.file)); err != nil {
-				t.Fatalf("expected %s next to the card directory: %v", f.file, err)
-			}
+			wantJSONFileRoundTrip(t, f)
 		})
+	}
+}
+
+func wantJSONFileRoundTrip(t *testing.T, f jsonFile) {
+	t.Helper()
+	store, root := newTestStore(t)
+	data, err := f.load(store)
+	if err != nil || data != nil {
+		t.Fatalf("before any save: got %q, %v, want nil, nil", data, err)
+	}
+	if err := f.save(store, []byte(`{"k":1}`)); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	data, err = f.load(store)
+	if err != nil || string(data) != `{"k":1}` {
+		t.Fatalf("after save: got %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, f.file)); err != nil {
+		t.Fatalf("expected %s next to the card directory: %v", f.file, err)
 	}
 }

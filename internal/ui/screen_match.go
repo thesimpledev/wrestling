@@ -84,84 +84,103 @@ func matchResultBanner(result *engine.MatchResult) string {
 
 func (ms *MatchScreen) Update(g *Game) error {
 	if g.in.JustPressed(ebiten.KeyEscape) {
-		if ms.state == MatchFinished {
-			g.SetScreen(NewMenuScreen())
-			return nil
-		}
-		// During match, ESC goes back to menu
 		g.SetScreen(NewMenuScreen())
 		return nil
 	}
 
+	ms.updatePlaybackControls(g)
+	if ms.shouldAdvance(g) && ms.shown < len(ms.events) {
+		ms.showNextEvent(g)
+	}
+
+	if ms.state == MatchFinished && g.in.JustPressed(ebiten.KeyR) {
+		next := ms.rematch(g)
+		next.RunMatch(g)
+		g.SetScreen(next)
+	}
+	return nil
+}
+
+const (
+	fastestAutoPlay = 5
+	autoPlayStep    = 5
+)
+
+func (ms *MatchScreen) updatePlaybackControls(g *Game) {
 	if g.in.JustPressed(ebiten.KeyA) {
 		ms.autoPlay = !ms.autoPlay
 	}
-
-	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
-		if ms.speed > 5 {
-			ms.speed -= 5
-		}
+	faster := g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd)
+	if faster && ms.speed > fastestAutoPlay {
+		ms.speed -= autoPlayStep
 	}
 	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
-		ms.speed += 5
+		ms.speed += autoPlayStep
+	}
+	if g.in.Pressed(ebiten.KeyUp) && ms.scroll > 0 {
+		ms.scroll--
+	}
+	if g.in.Pressed(ebiten.KeyDown) && ms.scroll < ms.maxScroll(g) {
+		ms.scroll++
+	}
+}
+
+// shouldAdvance reports whether the next line of the match should be shown
+// on this tick: on a key press, or when the auto-play timer comes round.
+func (ms *MatchScreen) shouldAdvance(g *Game) bool {
+	if confirmPressed(g.in) {
+		return true
+	}
+	if !ms.autoPlay || ms.state != MatchRunning {
+		return false
+	}
+	ms.ticker++
+	if ms.ticker < ms.speed {
+		return false
+	}
+	ms.ticker = 0
+	return true
+}
+
+func (ms *MatchScreen) showNextEvent(g *Game) {
+	ms.lines = append(ms.lines, ms.events[ms.shown].Text)
+	ms.shown++
+
+	if ms.shown >= len(ms.events) {
+		ms.state = MatchFinished
+		ms.lines = append(ms.lines,
+			"",
+			"============================================================",
+			matchResultBanner(ms.match.Result()),
+			"============================================================",
+			"",
+			"Press [R] for rematch, [ESC] for menu",
+		)
+	}
+	ms.scrollToBottom(g)
+}
+
+// rematch builds a fresh match with the same wrestlers, teams, allies and
+// match type as the one just finished.
+func (ms *MatchScreen) rematch(g *Game) *MatchScreen {
+	old := ms.match
+	first, second := old.Sides[0], old.Sides[1]
+
+	if len(first.Wrestlers) > 1 && len(second.Wrestlers) > 1 {
+		match := engine.NewTagMatch(
+			first.Wrestlers[0].Card, first.Wrestlers[1].Card,
+			second.Wrestlers[0].Card, second.Wrestlers[1].Card,
+		)
+		match.Sides[0].RegularPartners = first.RegularPartners
+		match.Sides[1].RegularPartners = second.RegularPartners
+		return NewTagMatchScreen(match, g)
 	}
 
-	if g.in.Pressed(ebiten.KeyUp) {
-		if ms.scroll > 0 {
-			ms.scroll--
-		}
-	}
-	if g.in.Pressed(ebiten.KeyDown) {
-		max := ms.maxScroll(g)
-		if ms.scroll < max {
-			ms.scroll++
-		}
-	}
-
-	advance := false
-	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-		advance = true
-	}
-	if ms.autoPlay && ms.state == MatchRunning {
-		ms.ticker++
-		if ms.ticker >= ms.speed {
-			ms.ticker = 0
-			advance = true
-		}
-	}
-
-	if advance && ms.shown < len(ms.events) {
-		e := ms.events[ms.shown]
-		ms.lines = append(ms.lines, e.Text)
-		ms.shown++
-		ms.scrollToBottom(g)
-
-		if ms.shown >= len(ms.events) {
-			ms.state = MatchFinished
-			ms.lines = append(ms.lines, "")
-			ms.lines = append(ms.lines, "============================================================")
-			ms.lines = append(ms.lines, matchResultBanner(ms.match.Result()))
-			ms.lines = append(ms.lines, "============================================================")
-			ms.lines = append(ms.lines, "")
-			ms.lines = append(ms.lines, "Press [R] for rematch, [ESC] for menu")
-			ms.scrollToBottom(g)
-		}
-	}
-
-	// Rematch
-	if ms.state == MatchFinished && g.in.JustPressed(ebiten.KeyR) {
-		card1 := ms.match.Sides[0].Active().Card
-		card2 := ms.match.Sides[1].Active().Card
-		newMs := NewMatchScreen(card1, card2, ms.match.Type, g)
-		// Preserve allies and feud flag
-		newMs.match.Sides[0].Ally = ms.match.Sides[0].Ally
-		newMs.match.Sides[1].Ally = ms.match.Sides[1].Ally
-		newMs.match.IsFeud = ms.match.IsFeud
-		newMs.RunMatch(g)
-		g.SetScreen(newMs)
-	}
-
-	return nil
+	next := NewMatchScreen(first.Wrestlers[0].Card, second.Wrestlers[0].Card, old.Type, g)
+	next.match.Sides[0].Ally = first.Ally
+	next.match.Sides[1].Ally = second.Ally
+	next.match.IsFeud = old.IsFeud
+	return next
 }
 
 func (ms *MatchScreen) Draw(screen *ebiten.Image, g *Game) {

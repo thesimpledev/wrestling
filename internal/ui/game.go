@@ -42,6 +42,10 @@ type Game struct {
 	Store    storage.Store
 	Injuries loader.InjuryStore
 	Rules    engine.Rules
+
+	// CanQuit lets ESC on the main menu end the program. It is left off in
+	// the browser, where there is nothing to quit to.
+	CanQuit bool
 }
 
 func NewGame(roster []*engine.WrestlerCard, store storage.Store) *Game {

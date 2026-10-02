@@ -24,6 +24,7 @@ func main() {
 	}
 
 	game := ui.NewGame(roster, store)
+	game.CanQuit = true
 
 	ebiten.SetWindowSize(ui.WindowWidth, ui.WindowHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)

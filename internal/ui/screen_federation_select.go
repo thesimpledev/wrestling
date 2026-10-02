@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 	"wrestling/internal/loader"
 )
@@ -27,14 +26,14 @@ func (fs *FederationSelectScreen) itemCount() int {
 }
 
 func (fs *FederationSelectScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewMenuScreen())
 		return nil
 	}
 
-	fs.cursor = handleListInput(fs.cursor, fs.itemCount())
+	fs.cursor = handleListInput(g.in, fs.cursor, fs.itemCount())
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		if fs.cursor < len(fs.save.Federations) {
 			// Select existing federation
 			fs.save.ActiveIndex = fs.cursor

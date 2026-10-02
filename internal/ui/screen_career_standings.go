@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -109,17 +108,17 @@ func (s *CareerStandingsScreen) buildLines() {
 }
 
 func (s *CareerStandingsScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewCareerScreen(s.fed, s.save))
 		return nil
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if s.scroll > 0 {
 			s.scroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		max := len(s.lines) - s.visibleLines(g)
 		if max < 0 {
 			max = 0

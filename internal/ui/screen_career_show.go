@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -389,7 +388,7 @@ func (cs *CareerShowScreen) finishShow(g *Game) {
 }
 
 func (cs *CareerShowScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewCareerBookScreen(cs.fed, cs.save, cs.card, g))
 		return nil
 	}
@@ -405,12 +404,12 @@ func (cs *CareerShowScreen) Update(g *Game) error {
 	case ShowRunning:
 		cs.updateRunning(g)
 	case ShowMatchResult:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			cs.currentIdx++
 			cs.startMatch(g)
 		}
 	case ShowComplete:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			g.SetScreen(NewCareerScreen(cs.fed, cs.save))
 		}
 	}
@@ -437,7 +436,7 @@ func (cs *CareerShowScreen) updateBR(g *Game) error {
 	}
 
 	if br.phase == BRFinished {
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			cs.inBR = false
 			cs.currentIdx++
 			cs.startMatch(g)
@@ -469,7 +468,7 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 	}
 
 	if ts.phase == TournFinished {
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			cs.inTourn = false
 			cs.currentIdx++
 			cs.startMatch(g)
@@ -480,24 +479,24 @@ func (cs *CareerShowScreen) updateTournament(g *Game) error {
 }
 
 func (cs *CareerShowScreen) updateRunning(g *Game) {
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+	if g.in.JustPressed(ebiten.KeyA) {
 		cs.autoPlay = !cs.autoPlay
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) {
+	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
 		if cs.speed > 5 {
 			cs.speed -= 5
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
+	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
 		cs.speed += 5
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if cs.scroll > 0 {
 			cs.scroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		max := cs.maxScroll(g)
 		if cs.scroll < max {
 			cs.scroll++
@@ -505,7 +504,7 @@ func (cs *CareerShowScreen) updateRunning(g *Game) {
 	}
 
 	advance := false
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 		advance = true
 	}
 	if cs.autoPlay {

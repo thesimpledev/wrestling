@@ -5,7 +5,6 @@ import (
 	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -59,20 +58,20 @@ func NewBattleRoyalScreen(wrestlers []*engine.WrestlerCard, g *Game) *BattleRoya
 }
 
 func (b *BattleRoyalScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !b.embedded {
+	if g.in.JustPressed(ebiten.KeyEscape) && !b.embedded {
 		g.SetScreen(NewMenuScreen())
 		return nil
 	}
 
 	switch b.phase {
 	case BRIntro:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			b.champion = b.wrestlers[0]
 			b.phase = BRShowingBracket
 		}
 
 	case BRShowingBracket:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			b.startNextMatch(g)
 		}
 
@@ -80,7 +79,7 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 		b.updateMatch(g)
 
 	case BRMatchResult:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			if b.nextIdx >= len(b.wrestlers) {
 				b.phase = BRFinished
 			} else {
@@ -89,7 +88,7 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 		}
 
 	case BRFinished:
-		if !b.embedded && (inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)) {
+		if !b.embedded && (g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter)) {
 			g.SetScreen(NewMenuScreen())
 		}
 	}
@@ -127,24 +126,24 @@ func (b *BattleRoyalScreen) startNextMatch(g *Game) {
 }
 
 func (b *BattleRoyalScreen) updateMatch(g *Game) {
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+	if g.in.JustPressed(ebiten.KeyA) {
 		b.autoPlay = !b.autoPlay
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) {
+	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
 		if b.speed > 5 {
 			b.speed -= 5
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
+	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
 		b.speed += 5
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if b.scroll > 0 {
 			b.scroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		max := b.maxScroll(g)
 		if b.scroll < max {
 			b.scroll++
@@ -152,7 +151,7 @@ func (b *BattleRoyalScreen) updateMatch(g *Game) {
 	}
 
 	advance := false
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 		advance = true
 	}
 	if b.autoPlay {

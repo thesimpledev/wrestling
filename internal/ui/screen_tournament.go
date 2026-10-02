@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -72,7 +71,7 @@ func NewTournamentScreen(g *Game) *TournamentScreen {
 }
 
 func (t *TournamentScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) && !t.embedded {
+	if g.in.JustPressed(ebiten.KeyEscape) && !t.embedded {
 		switch t.phase {
 		case TournSelectSize:
 			g.SetScreen(NewMenuScreen())
@@ -98,8 +97,8 @@ func (t *TournamentScreen) Update(g *Game) error {
 	switch t.phase {
 	case TournSelectSize:
 		sizes := t.availableSizes()
-		t.sizeCursor = handleListInput(t.sizeCursor, len(sizes))
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		t.sizeCursor = handleListInput(g.in, t.sizeCursor, len(sizes))
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			t.bracketSize = sizes[t.sizeCursor]
 			t.totalRounds = int(math.Log2(float64(t.bracketSize)))
 			t.seeds = make([]*engine.WrestlerCard, t.bracketSize)
@@ -123,12 +122,12 @@ func (t *TournamentScreen) Update(g *Game) error {
 		t.updateRunningMatch(g)
 
 	case TournMatchResult:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 			t.advanceToNext(g)
 		}
 
 	case TournFinished:
-		if !t.embedded && (inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)) {
+		if !t.embedded && (g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter)) {
 			g.SetScreen(NewMenuScreen())
 		}
 	}
@@ -153,9 +152,9 @@ func (t *TournamentScreen) availableSizes() []int {
 func (t *TournamentScreen) updateFillBracket(g *Game) {
 	// rosterCursor navigates the roster; last option is "Auto-Fill Remaining"
 	listLen := len(g.Roster) + 1
-	t.rosterCursor = handleListInput(t.rosterCursor, listLen)
+	t.rosterCursor = handleListInput(g.in, t.rosterCursor, listLen)
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		if t.rosterCursor == len(g.Roster) {
 			t.autoFillSeeds(g)
 			t.startBracket()
@@ -216,16 +215,16 @@ func (t *TournamentScreen) startBracket() {
 }
 
 func (t *TournamentScreen) updateShowBracket(g *Game) {
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if t.bracketScroll > 0 {
 			t.bracketScroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		t.bracketScroll++
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 		t.startCurrentMatch(g)
 	}
 }
@@ -284,24 +283,24 @@ func (t *TournamentScreen) getMatchup(round, matchIdx int) (*engine.WrestlerCard
 }
 
 func (t *TournamentScreen) updateRunningMatch(g *Game) {
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+	if g.in.JustPressed(ebiten.KeyA) {
 		t.autoPlay = !t.autoPlay
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) {
+	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
 		if t.speed > 5 {
 			t.speed -= 5
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
+	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
 		t.speed += 5
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if t.scroll > 0 {
 			t.scroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		max := t.maxScroll(g)
 		if t.scroll < max {
 			t.scroll++
@@ -309,7 +308,7 @@ func (t *TournamentScreen) updateRunningMatch(g *Game) {
 	}
 
 	advance := false
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 		advance = true
 	}
 	if t.autoPlay {

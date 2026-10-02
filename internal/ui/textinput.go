@@ -1,9 +1,6 @@
 package ui
 
-import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
-)
+import "github.com/hajimehoshi/ebiten/v2"
 
 type TextInput struct {
 	Text      string
@@ -15,19 +12,18 @@ func NewTextInput(maxLen int) *TextInput {
 	return &TextInput{MaxLength: maxLen}
 }
 
-func (t *TextInput) Update() {
+func (t *TextInput) Update(in Input) {
 	t.blink++
 
 	// Append typed characters
-	chars := ebiten.AppendInputChars(nil)
-	for _, ch := range chars {
+	for _, ch := range in.Chars() {
 		if ch >= 32 && ch < 127 && len(t.Text) < t.MaxLength {
 			t.Text += string(ch)
 		}
 	}
 
 	// Backspace
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) && len(t.Text) > 0 {
+	if in.JustPressed(ebiten.KeyBackspace) && len(t.Text) > 0 {
 		t.Text = t.Text[:len(t.Text)-1]
 	}
 }

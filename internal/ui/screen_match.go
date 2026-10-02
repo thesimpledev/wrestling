@@ -2,7 +2,6 @@ package ui
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -82,7 +81,7 @@ func (ms *MatchScreen) saveInjuries(g *Game) {
 }
 
 func (ms *MatchScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		if ms.state == MatchFinished {
 			g.SetScreen(NewMenuScreen())
 			return nil
@@ -92,25 +91,25 @@ func (ms *MatchScreen) Update(g *Game) error {
 		return nil
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+	if g.in.JustPressed(ebiten.KeyA) {
 		ms.autoPlay = !ms.autoPlay
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadAdd) {
+	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
 		if ms.speed > 5 {
 			ms.speed -= 5
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyNumpadSubtract) {
+	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
 		ms.speed += 5
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if ms.scroll > 0 {
 			ms.scroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		max := ms.maxScroll(g)
 		if ms.scroll < max {
 			ms.scroll++
@@ -118,7 +117,7 @@ func (ms *MatchScreen) Update(g *Game) error {
 	}
 
 	advance := false
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
 		advance = true
 	}
 	if ms.autoPlay && ms.state == MatchRunning {
@@ -152,7 +151,7 @@ func (ms *MatchScreen) Update(g *Game) error {
 	}
 
 	// Rematch
-	if ms.state == MatchFinished && inpututil.IsKeyJustPressed(ebiten.KeyR) {
+	if ms.state == MatchFinished && g.in.JustPressed(ebiten.KeyR) {
 		card1 := ms.match.Sides[0].Active().Card
 		card2 := ms.match.Sides[1].Active().Card
 		newMs := NewMatchScreen(card1, card2, ms.match.Type, g)

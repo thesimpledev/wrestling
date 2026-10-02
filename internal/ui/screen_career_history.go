@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -118,12 +117,12 @@ func (h *CareerHistoryScreen) buildLines() {
 }
 
 func (h *CareerHistoryScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewCareerScreen(h.fed, h.save))
 		return nil
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+	if g.in.JustPressed(ebiten.KeyTab) {
 		if h.tab == HistoryTabMatches {
 			h.tab = HistoryTabTitle
 		} else {
@@ -133,12 +132,12 @@ func (h *CareerHistoryScreen) Update(g *Game) error {
 		h.buildLines()
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if g.in.Pressed(ebiten.KeyUp) {
 		if h.scroll > 0 {
 			h.scroll--
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if g.in.Pressed(ebiten.KeyDown) {
 		max := len(h.lines) - h.visibleLines(g)
 		if max < 0 {
 			max = 0

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -38,14 +37,14 @@ func NewCareerScreen(fed *engine.Federation, save *engine.FederationSave) *Caree
 }
 
 func (cs *CareerScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewFederationSelectScreen(g))
 		return nil
 	}
 
-	cs.cursor = handleListInput(cs.cursor, len(careerMenuLabels))
+	cs.cursor = handleListInput(g.in, cs.cursor, len(careerMenuLabels))
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		fedRoster := FilterRoster(g.Roster, cs.fed.Roster)
 		switch CareerMenuOption(cs.cursor) {
 		case CareerOptNextShow:

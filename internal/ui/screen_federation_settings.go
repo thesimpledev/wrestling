@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -56,13 +55,13 @@ func NewFederationSettingsScreen(fed *engine.Federation, save *engine.Federation
 func (fs *FederationSettingsScreen) Update(g *Game) error {
 	switch fs.phase {
 	case SettingsNav:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			g.SetScreen(NewCareerScreen(fs.fed, fs.save))
 			return nil
 		}
-		fs.field = SettingsField(handleListInput(int(fs.field), settingsFieldCount))
+		fs.field = SettingsField(handleListInput(g.in, int(fs.field), settingsFieldCount))
 
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			switch fs.field {
 			case SettingsFieldName:
 				fs.input.Reset()
@@ -90,13 +89,13 @@ func (fs *FederationSettingsScreen) Update(g *Game) error {
 		}
 
 	case SettingsEditing:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			fs.phase = SettingsNav
 			fs.input.MaxLength = 30
 			return nil
 		}
-		fs.input.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fs.input.Text) > 0 {
+		fs.input.Update(g.in)
+		if g.in.JustPressed(ebiten.KeyEnter) && len(fs.input.Text) > 0 {
 			switch fs.field {
 			case SettingsFieldName:
 				fs.fed.Name = fs.input.Text
@@ -113,18 +112,18 @@ func (fs *FederationSettingsScreen) Update(g *Game) error {
 		}
 
 	case SettingsEditPPVNames:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			// Save ppv names back
 			fs.fed.PPVNames = fs.ppvNames
 			fs.phase = SettingsNav
 			return nil
 		}
-		fs.ppvInput.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fs.ppvInput.Text) > 0 {
+		fs.ppvInput.Update(g.in)
+		if g.in.JustPressed(ebiten.KeyEnter) && len(fs.ppvInput.Text) > 0 {
 			fs.ppvNames = append(fs.ppvNames, fs.ppvInput.Text)
 			fs.ppvInput.Reset()
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fs.ppvNames) > 0 && len(fs.ppvInput.Text) == 0 {
+		if g.in.JustPressed(ebiten.KeyD) && len(fs.ppvNames) > 0 && len(fs.ppvInput.Text) == 0 {
 			fs.ppvNames = fs.ppvNames[:len(fs.ppvNames)-1]
 		}
 	}

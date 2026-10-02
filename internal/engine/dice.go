@@ -2,19 +2,44 @@ package engine
 
 import "math/rand/v2"
 
-// Roll1d6 returns a random number from 1-6.
-func Roll1d6() int {
+// Dice is the source of six-sided die rolls for a match.
+type Dice interface {
+	// Roll returns a value from 1 to 6.
+	Roll() int
+}
+
+type randomDice struct{}
+
+func (randomDice) Roll() int {
 	return rand.IntN(6) + 1 // #nosec G404 -- game dice, not security-sensitive
 }
 
-// Roll2d6 returns the sum of two six-sided dice (2-12).
-func Roll2d6() int {
-	return Roll1d6() + Roll1d6()
+// twoDice is the result of rolling two dice together.
+type twoDice struct {
+	first  int
+	second int
 }
 
-// RollIsDoubles rolls 2d6 and returns the total and whether doubles were rolled.
-func RollIsDoubles() (total int, doubles bool) {
-	a := Roll1d6()
-	b := Roll1d6()
-	return a + b, a == b
+func (r twoDice) total() int {
+	return r.first + r.second
+}
+
+func (r twoDice) doubles() bool {
+	return r.first == r.second
+}
+
+// SetDice replaces the dice a match rolls, which lets tests script every roll.
+func (m *Match) SetDice(d Dice) {
+	if d == nil {
+		panic("engine: SetDice called with nil dice")
+	}
+	m.dice = d
+}
+
+func (m *Match) rollOne() int {
+	return m.dice.Roll()
+}
+
+func (m *Match) rollTwo() twoDice {
+	return twoDice{first: m.dice.Roll(), second: m.dice.Roll()}
 }

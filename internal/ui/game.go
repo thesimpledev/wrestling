@@ -6,7 +6,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 	"wrestling/internal/loader"
 	"wrestling/internal/storage"
@@ -37,6 +36,7 @@ type Game struct {
 	screenH  int
 	scale    int
 	notice   string
+	in       Input
 	Roster   []*engine.WrestlerCard
 	Store    storage.Store
 	Injuries loader.InjuryStore
@@ -47,6 +47,7 @@ func NewGame(roster []*engine.WrestlerCard, store storage.Store) *Game {
 		Roster:   roster,
 		Store:    store,
 		scale:    2,
+		in:       ebitenInput{},
 		Injuries: loader.LoadInjuries(store),
 	}
 	g.screen = NewMenuScreen()
@@ -78,10 +79,10 @@ func (g *Game) SaveFederations(save *engine.FederationSave) {
 }
 
 func (g *Game) Update() error {
-	if g.notice != "" && len(inpututil.AppendJustPressedKeys(nil)) > 0 {
+	if g.notice != "" && g.in.AnyJustPressed() {
 		g.notice = ""
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+	if g.in.JustPressed(ebiten.KeyF1) {
 		if g.scale == 2 {
 			g.scale = 1
 		} else {

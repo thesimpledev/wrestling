@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -41,7 +40,7 @@ func NewCareerBookScreen(fed *engine.Federation, save *engine.FederationSave, ca
 }
 
 func (bs *CareerBookScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		if bs.phase != BookViewCard {
 			bs.phase = BookViewCard
 			return nil
@@ -67,9 +66,9 @@ func (bs *CareerBookScreen) Update(g *Game) error {
 func (bs *CareerBookScreen) updateViewCard(g *Game) {
 	// Extra options: Watch All, Simulate All, Watch Main Event
 	totalItems := len(bs.card) + 3
-	bs.cursor = handleListInput(bs.cursor, totalItems)
+	bs.cursor = handleListInput(g.in, bs.cursor, totalItems)
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		if bs.cursor < len(bs.card) {
 			// Edit this match
 			bs.editIdx = bs.cursor
@@ -104,8 +103,8 @@ var editableTypeNames = []string{
 }
 
 func (bs *CareerBookScreen) updateEditType(g *Game) {
-	bs.editCursor = handleListInput(bs.editCursor, len(editableTypes))
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	bs.editCursor = handleListInput(g.in, bs.editCursor, len(editableTypes))
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		match := &bs.card[bs.editIdx]
 		match.Type = editableTypes[bs.editCursor]
 		if match.Type == engine.MatchTag {
@@ -129,8 +128,8 @@ func (bs *CareerBookScreen) updateEditType(g *Game) {
 }
 
 func (bs *CareerBookScreen) updateEditSide(g *Game, sideIdx int) {
-	bs.editCursor = handleListInput(bs.editCursor, len(bs.roster))
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	bs.editCursor = handleListInput(g.in, bs.editCursor, len(bs.roster))
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		match := &bs.card[bs.editIdx]
 		name := bs.roster[bs.editCursor].Name
 		if sideIdx == 0 {

@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -86,90 +85,90 @@ func (fc *FederationCreateScreen) parsePPVFreq() int {
 func (fc *FederationCreateScreen) Update(g *Game) error {
 	switch fc.phase {
 	case CreatePhaseName:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			g.SetScreen(NewFederationSelectScreen(g))
 			return nil
 		}
-		fc.nameInput.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.nameInput.Text) > 0 {
+		fc.nameInput.Update(g.in)
+		if g.in.JustPressed(ebiten.KeyEnter) && len(fc.nameInput.Text) > 0 {
 			fc.phase = CreatePhaseRoster
 			fc.rosterCursor = 0
 			fc.rosterSelect = make([]bool, len(g.Roster))
 		}
 
 	case CreatePhaseRoster:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			fc.phase = CreatePhaseName
 			return nil
 		}
-		fc.rosterCursor = handleListInput(fc.rosterCursor, len(g.Roster))
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		fc.rosterCursor = handleListInput(g.in, fc.rosterCursor, len(g.Roster))
+		if g.in.JustPressed(ebiten.KeySpace) {
 			fc.rosterSelect[fc.rosterCursor] = !fc.rosterSelect[fc.rosterCursor]
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && fc.selectedCount() >= 4 {
+		if g.in.JustPressed(ebiten.KeyEnter) && fc.selectedCount() >= 4 {
 			fc.phase = CreatePhaseChampionships
 			fc.beltInput.Reset()
 		}
 
 	case CreatePhaseChampionships:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			fc.phase = CreatePhaseRoster
 			return nil
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyTab) && len(fc.belts) >= 1 {
+		if g.in.JustPressed(ebiten.KeyTab) && len(fc.belts) >= 1 {
 			fc.phase = CreatePhaseSchedule
 			fc.showNameInput.Reset()
 			fc.ppvFreqInput.Reset()
 			fc.ppvFreqInput.Text = "4"
 			return nil
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fc.belts) > 0 && len(fc.beltInput.Text) == 0 {
+		if g.in.JustPressed(ebiten.KeyD) && len(fc.belts) > 0 && len(fc.beltInput.Text) == 0 {
 			fc.belts = fc.belts[:len(fc.belts)-1]
 			return nil
 		}
-		fc.beltInput.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.beltInput.Text) > 0 {
+		fc.beltInput.Update(g.in)
+		if g.in.JustPressed(ebiten.KeyEnter) && len(fc.beltInput.Text) > 0 {
 			fc.belts = append(fc.belts, fc.beltInput.Text)
 			fc.beltInput.Reset()
 		}
 
 	case CreatePhaseSchedule:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			fc.phase = CreatePhaseChampionships
 			return nil
 		}
 		// Tab switches between the two inputs
-		fc.showNameInput.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.showNameInput.Text) > 0 {
+		fc.showNameInput.Update(g.in)
+		if g.in.JustPressed(ebiten.KeyEnter) && len(fc.showNameInput.Text) > 0 {
 			fc.phase = CreatePhasePPVNames
 			fc.ppvNameInput.Reset()
 		}
 
 	case CreatePhasePPVNames:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			fc.phase = CreatePhaseSchedule
 			return nil
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		if g.in.JustPressed(ebiten.KeyTab) {
 			fc.phase = CreatePhaseConfirm
 			return nil
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyD) && len(fc.ppvNames) > 0 && len(fc.ppvNameInput.Text) == 0 {
+		if g.in.JustPressed(ebiten.KeyD) && len(fc.ppvNames) > 0 && len(fc.ppvNameInput.Text) == 0 {
 			fc.ppvNames = fc.ppvNames[:len(fc.ppvNames)-1]
 			return nil
 		}
-		fc.ppvNameInput.Update()
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) && len(fc.ppvNameInput.Text) > 0 {
+		fc.ppvNameInput.Update(g.in)
+		if g.in.JustPressed(ebiten.KeyEnter) && len(fc.ppvNameInput.Text) > 0 {
 			fc.ppvNames = append(fc.ppvNames, fc.ppvNameInput.Text)
 			fc.ppvNameInput.Reset()
 		}
 
 	case CreatePhaseConfirm:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.in.JustPressed(ebiten.KeyEscape) {
 			fc.phase = CreatePhasePPVNames
 			return nil
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeyEnter) {
 			cfg := engine.FederationConfig{
 				Name:           fc.nameInput.Text,
 				RosterNames:    fc.selectedRosterNames(g),

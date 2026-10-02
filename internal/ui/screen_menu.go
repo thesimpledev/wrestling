@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"wrestling/internal/engine"
 )
 
@@ -82,7 +81,7 @@ func (m *MenuScreen) isSelected(idx int) bool {
 }
 
 func (m *MenuScreen) Update(g *Game) error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		if m.phase == PhaseSelectMatchType {
 			return ebiten.Termination
 		}
@@ -126,8 +125,8 @@ func (m *MenuScreen) Update(g *Game) error {
 
 	switch m.phase {
 	case PhaseSelectMatchType:
-		m.cursor = handleListInput(m.cursor, len(menuOptions))
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(menuOptions))
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			switch m.cursor {
 			case menuCareer:
 				g.SetScreen(NewFederationSelectScreen(g))
@@ -167,8 +166,8 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 
 	case PhaseSelectWrestler1:
-		m.cursor = handleListInput(m.cursor, len(g.Roster))
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster))
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			if m.matchType == engine.MatchType(-1) {
 				g.SetScreen(NewCardEditorScreen(g.Roster[m.cursor]))
 				return nil
@@ -179,8 +178,8 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 
 	case PhaseSelectWrestler2:
-		m.cursor = handleListInput(m.cursor, len(g.Roster))
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster))
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			m.selected[1] = m.cursor
 			if m.matchType == engine.MatchTag {
 				m.phase = PhaseSelectWrestler3
@@ -192,16 +191,16 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 
 	case PhaseSelectWrestler3:
-		m.cursor = handleListInput(m.cursor, len(g.Roster))
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster))
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			m.selected[2] = m.cursor
 			m.phase = PhaseSelectWrestler4
 			m.cursor = 0
 		}
 
 	case PhaseSelectWrestler4:
-		m.cursor = handleListInput(m.cursor, len(g.Roster))
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster))
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			m.selected[3] = m.cursor
 			m.phase = PhaseReady
 			m.cursor = 0
@@ -209,8 +208,8 @@ func (m *MenuScreen) Update(g *Game) error {
 
 	case PhaseSelectAlly1:
 		// +1 for "No Ally" option at top
-		m.cursor = handleListInput(m.cursor, len(g.Roster)+1)
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster)+1)
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			if m.cursor == 0 {
 				m.allies[0] = -1 // No ally
 			} else {
@@ -221,8 +220,8 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 
 	case PhaseSelectAlly2:
-		m.cursor = handleListInput(m.cursor, len(g.Roster)+1)
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster)+1)
+		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 			if m.cursor == 0 {
 				m.allies[1] = -1
 			} else {
@@ -233,11 +232,11 @@ func (m *MenuScreen) Update(g *Game) error {
 		}
 
 	case PhaseMultiSelect:
-		m.cursor = handleListInput(m.cursor, len(g.Roster))
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		m.cursor = handleListInput(g.in, m.cursor, len(g.Roster))
+		if g.in.JustPressed(ebiten.KeySpace) {
 			m.multiSelect[m.cursor] = !m.multiSelect[m.cursor]
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.in.JustPressed(ebiten.KeyEnter) {
 			var picks []*engine.WrestlerCard
 			for i, sel := range m.multiSelect {
 				if sel {
@@ -468,14 +467,14 @@ func (m *MenuScreen) drawAllyList(screen *ebiten.Image, g *Game, y int) {
 	}
 }
 
-func handleListInput(cursor, length int) int {
-	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
+func handleListInput(in Input, cursor, length int) int {
+	if in.JustPressed(ebiten.KeyDown) {
 		cursor++
 		if cursor >= length {
 			cursor = 0
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
+	if in.JustPressed(ebiten.KeyUp) {
 		cursor--
 		if cursor < 0 {
 			cursor = length - 1

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"gopkg.in/yaml.v3"
 	"wrestling/internal/engine"
 )
@@ -156,15 +155,15 @@ func (e *CardEditorScreen) Update(g *Game) error {
 		return e.updateEditing(g)
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewMenuScreen())
 		return nil
 	}
 
-	e.cursor = handleListInput(e.cursor, len(e.fields))
+	e.cursor = handleListInput(g.in, e.cursor, len(e.fields))
 	// Skip separator lines
 	for e.fields[e.cursor].Label[0] == '-' {
-		if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
+		if g.in.JustPressed(ebiten.KeyUp) {
 			e.cursor--
 			if e.cursor < 0 {
 				e.cursor = len(e.fields) - 1
@@ -177,12 +176,12 @@ func (e *CardEditorScreen) Update(g *Game) error {
 		}
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
 		e.editing = true
 	}
 
 	// Save with Ctrl+S
-	if ebiten.IsKeyPressed(ebiten.KeyControl) && inpututil.IsKeyJustPressed(ebiten.KeyS) {
+	if g.in.Pressed(ebiten.KeyControl) && g.in.JustPressed(ebiten.KeyS) {
 		e.saveCard(g)
 	}
 
@@ -194,33 +193,31 @@ func (e *CardEditorScreen) updateEditing(g *Game) error {
 
 	// Handle rating fields specially
 	if field.Type == FieldRating {
-		if inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		if g.in.JustPressed(ebiten.KeyA) {
 			field.Value = "A"
 			e.editing = false
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+		} else if g.in.JustPressed(ebiten.KeyB) {
 			field.Value = "B"
 			e.editing = false
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		} else if g.in.JustPressed(ebiten.KeyC) {
 			field.Value = "C"
 			e.editing = false
-		} else if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		} else if g.in.JustPressed(ebiten.KeyEscape) {
 			e.editing = false
 		}
 		return nil
 	}
 
 	// General text input
-	var chars []rune
-	chars = ebiten.AppendInputChars(chars)
-	for _, c := range chars {
+	for _, c := range g.in.Chars() {
 		field.Value += string(c)
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) && len(field.Value) > 0 {
+	if g.in.JustPressed(ebiten.KeyBackspace) && len(field.Value) > 0 {
 		field.Value = field.Value[:len(field.Value)-1]
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeyEscape) {
 		e.editing = false
 	}
 

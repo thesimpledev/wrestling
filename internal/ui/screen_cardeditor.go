@@ -1,13 +1,14 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"gopkg.in/yaml.v3"
 	"wrestling/internal/engine"
+	"wrestling/internal/loader"
 )
 
 // Field types for the editor
@@ -19,6 +20,7 @@ const (
 	FieldRating // A, B, or C
 	FieldMove
 	FieldDefense
+	FieldHeading
 )
 
 type EditorField struct {
@@ -27,6 +29,20 @@ type EditorField struct {
 	Type  FieldType
 }
 
+const (
+	finisherRollLabel = "Finisher Roll (min-max)"
+	messageTicks      = 300
+)
+
+func moveLabel(level, slot int) string {
+	return fmt.Sprintf("L%d Move %d (name,power,deflvl,extras)", level, slot)
+}
+
+func defenseLabel(level, slot int) string {
+	return fmt.Sprintf("L%d Def %d (type,power,extras)", level, slot)
+}
+
+// CardEditorScreen edits one wrestler card as a list of text fields.
 type CardEditorScreen struct {
 	fields   []EditorField
 	cursor   int
@@ -34,114 +50,75 @@ type CardEditorScreen struct {
 	editing  bool
 	message  string
 	msgTimer int
+
+	// base is the card as it was loaded or last saved, or nil for a new card.
+	// It supplies anything the fields do not show.
+	base *engine.WrestlerCard
 }
 
 func NewCardEditorScreen(card *engine.WrestlerCard) *CardEditorScreen {
-	e := &CardEditorScreen{}
-	if card != nil {
-		e.loadCard(card)
-	} else {
-		e.loadDefaults()
+	e := &CardEditorScreen{base: card}
+	if card == nil {
+		card = defaultCard()
 	}
+	e.fields = cardFields(card)
 	return e
 }
 
-func (e *CardEditorScreen) loadDefaults() {
-	e.fields = []EditorField{
-		{Label: "Name", Value: "New Wrestler", Type: FieldString},
-		{Label: "--- RATINGS ---", Value: "", Type: FieldString},
-		{Label: "Ropes", Value: "B", Type: FieldRating},
-		{Label: "Turnbuckle", Value: "B", Type: FieldRating},
-		{Label: "Ring", Value: "B", Type: FieldRating},
-		{Label: "Deathjump", Value: "B", Type: FieldRating},
-		{Label: "PIN", Value: "5", Type: FieldInt},
-		{Label: "PIN Adv", Value: "3", Type: FieldInt},
-		{Label: "Cage", Value: "5", Type: FieldInt},
-		{Label: "DQ", Value: "4", Type: FieldInt},
-		{Label: "Agility", Value: "0", Type: FieldInt},
-		{Label: "Power", Value: "0", Type: FieldInt},
-		{Label: "Distractor", Value: "5", Type: FieldInt},
-		{Label: "--- FINISHER ---", Value: "", Type: FieldString},
-		{Label: "Finisher Name", Value: "FINISHING MOVE", Type: FieldString},
-		{Label: "Finisher Rating", Value: "3", Type: FieldInt},
+// defaultCard is the starting point for "Create New Card".
+func defaultCard() *engine.WrestlerCard {
+	card := &engine.WrestlerCard{
+		Name:  "New Wrestler",
+		Ropes: engine.RatingB, Turnbuckle: engine.RatingB, Ring: engine.RatingB, Deathjump: engine.RatingB,
+		PIN: 5, PINAdv: 3, Cage: 5, DQ: 4, Distractor: 5,
+		Finisher: engine.Finisher{Name: "FINISHING MOVE", Rating: 3},
 	}
-	// Add offense moves (3 levels x 6 moves)
-	for lvl := 1; lvl <= 3; lvl++ {
-		e.fields = append(e.fields, EditorField{
-			Label: fmt.Sprintf("--- OFFENSE LEVEL %d ---", lvl), Type: FieldString,
-		})
-		for slot := 1; slot <= 6; slot++ {
-			e.fields = append(e.fields, EditorField{
-				Label: fmt.Sprintf("L%d Move %d (name,power,deflvl)", lvl, slot),
-				Value: fmt.Sprintf("Move %d,%d,%d", slot, 1, 1),
-				Type:  FieldMove,
-			})
+	for lvl := range card.Offense {
+		for slot := range card.Offense[lvl] {
+			card.Offense[lvl][slot] = engine.Move{Name: fmt.Sprintf("Move %d", slot+1), Power: 1, DefLevel: 1}
+			card.Defense[lvl][slot] = engine.DefenseOutcome{Type: engine.DefDazed, Power: 1}
 		}
 	}
-	// Add defense outcomes (3 levels x 6 outcomes)
-	for lvl := 1; lvl <= 3; lvl++ {
-		e.fields = append(e.fields, EditorField{
-			Label: fmt.Sprintf("--- DEFENSE LEVEL %d ---", lvl), Type: FieldString,
-		})
-		for slot := 1; slot <= 6; slot++ {
-			e.fields = append(e.fields, EditorField{
-				Label: fmt.Sprintf("L%d Def %d (type,power)", lvl, slot),
-				Value: "dazed,1",
-				Type:  FieldDefense,
-			})
-		}
-	}
+	return card
 }
 
-func (e *CardEditorScreen) loadCard(card *engine.WrestlerCard) {
-	ratingStr := func(r engine.Rating) string {
-		return r.String()
-	}
-	e.fields = []EditorField{
+func cardFields(card *engine.WrestlerCard) []EditorField {
+	number := strconv.Itoa
+	fields := []EditorField{
 		{Label: "Name", Value: card.Name, Type: FieldString},
-		{Label: "--- RATINGS ---", Value: "", Type: FieldString},
-		{Label: "Ropes", Value: ratingStr(card.Ropes), Type: FieldRating},
-		{Label: "Turnbuckle", Value: ratingStr(card.Turnbuckle), Type: FieldRating},
-		{Label: "Ring", Value: ratingStr(card.Ring), Type: FieldRating},
-		{Label: "Deathjump", Value: ratingStr(card.Deathjump), Type: FieldRating},
-		{Label: "PIN", Value: fmt.Sprintf("%d", card.PIN), Type: FieldInt},
-		{Label: "PIN Adv", Value: fmt.Sprintf("%d", card.PINAdv), Type: FieldInt},
-		{Label: "Cage", Value: fmt.Sprintf("%d", card.Cage), Type: FieldInt},
-		{Label: "DQ", Value: fmt.Sprintf("%d", card.DQ), Type: FieldInt},
-		{Label: "Agility", Value: fmt.Sprintf("%d", card.Agility), Type: FieldInt},
-		{Label: "Power", Value: fmt.Sprintf("%d", card.Power), Type: FieldInt},
-		{Label: "Distractor", Value: fmt.Sprintf("%d", card.Distractor), Type: FieldInt},
-		{Label: "--- FINISHER ---", Value: "", Type: FieldString},
+		{Label: "--- RATINGS ---", Type: FieldHeading},
+		{Label: "Ropes", Value: card.Ropes.String(), Type: FieldRating},
+		{Label: "Turnbuckle", Value: card.Turnbuckle.String(), Type: FieldRating},
+		{Label: "Ring", Value: card.Ring.String(), Type: FieldRating},
+		{Label: "Deathjump", Value: card.Deathjump.String(), Type: FieldRating},
+		{Label: "PIN", Value: number(card.PIN), Type: FieldInt},
+		{Label: "PIN Adv", Value: number(card.PINAdv), Type: FieldInt},
+		{Label: "Cage", Value: number(card.Cage), Type: FieldInt},
+		{Label: "DQ", Value: number(card.DQ), Type: FieldInt},
+		{Label: "Agility", Value: number(card.Agility), Type: FieldInt},
+		{Label: "Power", Value: number(card.Power), Type: FieldInt},
+		{Label: "Distractor", Value: number(card.Distractor), Type: FieldInt},
+		{Label: "--- FINISHER ---", Type: FieldHeading},
 		{Label: "Finisher Name", Value: card.Finisher.Name, Type: FieldString},
-		{Label: "Finisher Rating", Value: fmt.Sprintf("%d", card.Finisher.Rating), Type: FieldInt},
+		{Label: "Finisher Rating", Value: number(card.Finisher.Rating), Type: FieldInt},
+		{Label: finisherRollLabel, Value: formatFinisherRoll(card.Finisher), Type: FieldString},
 	}
-	for lvl := 0; lvl < 3; lvl++ {
-		e.fields = append(e.fields, EditorField{
-			Label: fmt.Sprintf("--- OFFENSE LEVEL %d ---", lvl+1), Type: FieldString,
-		})
-		for slot := 0; slot < 6; slot++ {
-			mv := card.Offense[lvl][slot]
-			e.fields = append(e.fields, EditorField{
-				Label: fmt.Sprintf("L%d Move %d (name,power,deflvl)", lvl+1, slot+1),
-				Value: fmt.Sprintf("%s,%d,%d", mv.Name, mv.Power, mv.DefLevel),
-				Type:  FieldMove,
-			})
+	for lvl := range card.Offense {
+		fields = append(fields, EditorField{Label: fmt.Sprintf("--- OFFENSE LEVEL %d ---", lvl+1), Type: FieldHeading})
+		for slot, move := range card.Offense[lvl] {
+			fields = append(fields, EditorField{Label: moveLabel(lvl+1, slot+1), Value: formatMoveLine(move), Type: FieldMove})
 		}
 	}
-	for lvl := 0; lvl < 3; lvl++ {
-		e.fields = append(e.fields, EditorField{
-			Label: fmt.Sprintf("--- DEFENSE LEVEL %d ---", lvl+1), Type: FieldString,
-		})
-		for slot := 0; slot < 6; slot++ {
-			def := card.Defense[lvl][slot]
-			e.fields = append(e.fields, EditorField{
-				Label: fmt.Sprintf("L%d Def %d (type,power)", lvl+1, slot+1),
-				Value: fmt.Sprintf("%s,%d", def.Type, def.Power),
-				Type:  FieldDefense,
-			})
+	for lvl := range card.Defense {
+		fields = append(fields, EditorField{Label: fmt.Sprintf("--- DEFENSE LEVEL %d ---", lvl+1), Type: FieldHeading})
+		for slot, outcome := range card.Defense[lvl] {
+			fields = append(fields, EditorField{Label: defenseLabel(lvl+1, slot+1), Value: formatDefenseLine(outcome), Type: FieldDefense})
 		}
 	}
+	return fields
 }
+
+// ─── Input ──────────────────────────────────────────────────────────────────
 
 func (e *CardEditorScreen) Update(g *Game) error {
 	if e.msgTimer > 0 {
@@ -152,87 +129,266 @@ func (e *CardEditorScreen) Update(g *Game) error {
 	}
 
 	if e.editing {
-		return e.updateEditing(g)
+		e.updateEditing(g)
+		return nil
 	}
-
 	if g.in.JustPressed(ebiten.KeyEscape) {
 		g.SetScreen(NewMenuScreen())
 		return nil
 	}
 
-	e.cursor = handleListInput(g.in, e.cursor, len(e.fields))
-	// Skip separator lines
-	for e.fields[e.cursor].Label[0] == '-' {
-		if g.in.JustPressed(ebiten.KeyUp) {
-			e.cursor--
-			if e.cursor < 0 {
-				e.cursor = len(e.fields) - 1
-			}
-		} else {
-			e.cursor++
-			if e.cursor >= len(e.fields) {
-				e.cursor = 0
-			}
-		}
-	}
-
-	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
+	e.moveCursor(g.in)
+	if confirmPressed(g.in) {
 		e.editing = true
 	}
-
-	// Save with Ctrl+S
 	if g.in.Pressed(ebiten.KeyControl) && g.in.JustPressed(ebiten.KeyS) {
 		e.saveCard(g)
 	}
-
 	return nil
 }
 
-func (e *CardEditorScreen) updateEditing(g *Game) error {
-	field := &e.fields[e.cursor]
-
-	// Handle rating fields specially
-	if field.Type == FieldRating {
-		if g.in.JustPressed(ebiten.KeyA) {
-			field.Value = "A"
-			e.editing = false
-		} else if g.in.JustPressed(ebiten.KeyB) {
-			field.Value = "B"
-			e.editing = false
-		} else if g.in.JustPressed(ebiten.KeyC) {
-			field.Value = "C"
-			e.editing = false
-		} else if g.in.JustPressed(ebiten.KeyEscape) {
-			e.editing = false
+// moveCursor moves to the next or previous field, passing over headings.
+func (e *CardEditorScreen) moveCursor(in Input) {
+	step := 0
+	if in.JustPressed(ebiten.KeyDown) {
+		step = 1
+	}
+	if in.JustPressed(ebiten.KeyUp) {
+		step = -1
+	}
+	if step == 0 {
+		return
+	}
+	for moved := 0; moved < len(e.fields); moved++ {
+		e.cursor = (e.cursor + step + len(e.fields)) % len(e.fields)
+		if e.fields[e.cursor].Type != FieldHeading {
+			return
 		}
-		return nil
+	}
+}
+
+func (e *CardEditorScreen) updateEditing(g *Game) {
+	field := &e.fields[e.cursor]
+	if field.Type == FieldRating {
+		e.updateRating(g.in, field)
+		return
 	}
 
-	// General text input
 	for _, c := range g.in.Chars() {
 		field.Value += string(c)
 	}
-
 	if g.in.JustPressed(ebiten.KeyBackspace) && len(field.Value) > 0 {
 		field.Value = field.Value[:len(field.Value)-1]
 	}
-
 	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeyEscape) {
 		e.editing = false
 	}
+}
 
+func (e *CardEditorScreen) updateRating(in Input, field *EditorField) {
+	ratingKeys := map[ebiten.Key]string{ebiten.KeyA: "A", ebiten.KeyB: "B", ebiten.KeyC: "C"}
+	for key, letter := range ratingKeys {
+		if in.JustPressed(key) {
+			field.Value = letter
+			e.editing = false
+		}
+	}
+	if in.JustPressed(ebiten.KeyEscape) {
+		e.editing = false
+	}
+}
+
+// ─── Fields to card ─────────────────────────────────────────────────────────
+
+func (e *CardEditorScreen) fieldValue(label string) string {
+	for _, f := range e.fields {
+		if f.Label == label {
+			return f.Value
+		}
+	}
+	return ""
+}
+
+func (e *CardEditorScreen) setFieldValue(label, value string) {
+	for i := range e.fields {
+		if e.fields[i].Label == label {
+			e.fields[i].Value = value
+		}
+	}
+}
+
+func (e *CardEditorScreen) fieldInt(label string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(e.fieldValue(label))) // not a number reads as 0, which the range checks reject
+	return n
+}
+
+func (e *CardEditorScreen) setMessage(text string) {
+	e.message = text
+	e.msgTimer = messageTicks
+}
+
+type intField struct {
+	label    string
+	min, max int
+	target   func(card *engine.WrestlerCard) *int
+}
+
+var intFields = []intField{
+	{"PIN", 1, 12, func(c *engine.WrestlerCard) *int { return &c.PIN }},
+	{"PIN Adv", 1, 12, func(c *engine.WrestlerCard) *int { return &c.PINAdv }},
+	{"Cage", 1, 12, func(c *engine.WrestlerCard) *int { return &c.Cage }},
+	{"DQ", 1, 12, func(c *engine.WrestlerCard) *int { return &c.DQ }},
+	{"Agility", -5, 5, func(c *engine.WrestlerCard) *int { return &c.Agility }},
+	{"Power", -5, 5, func(c *engine.WrestlerCard) *int { return &c.Power }},
+	{"Distractor", 1, 12, func(c *engine.WrestlerCard) *int { return &c.Distractor }},
+	{"Finisher Rating", 0, 8, func(c *engine.WrestlerCard) *int { return &c.Finisher.Rating }},
+}
+
+type ratingField struct {
+	label  string
+	target func(card *engine.WrestlerCard) *engine.Rating
+}
+
+var ratingFields = []ratingField{
+	{"Ropes", func(c *engine.WrestlerCard) *engine.Rating { return &c.Ropes }},
+	{"Turnbuckle", func(c *engine.WrestlerCard) *engine.Rating { return &c.Turnbuckle }},
+	{"Ring", func(c *engine.WrestlerCard) *engine.Rating { return &c.Ring }},
+	{"Deathjump", func(c *engine.WrestlerCard) *engine.Rating { return &c.Deathjump }},
+}
+
+var ratingsByLetter = map[string]engine.Rating{"A": engine.RatingA, "B": engine.RatingB, "C": engine.RatingC}
+
+// buildCard turns the fields into a card. The error is the first field that
+// does not hold a valid value.
+func (e *CardEditorScreen) buildCard() (*engine.WrestlerCard, error) {
+	card := &engine.WrestlerCard{Name: strings.TrimSpace(e.fieldValue("Name"))}
+	if card.Name == "" {
+		return nil, errors.New("Name cannot be empty")
+	}
+	card.Finisher.Name = strings.TrimSpace(e.fieldValue("Finisher Name"))
+
+	steps := []func(*engine.WrestlerCard) error{
+		e.readRatings, e.readNumbers, e.readFinisher, e.readOffense, e.readDefense,
+	}
+	for _, step := range steps {
+		if err := step(card); err != nil {
+			return nil, err
+		}
+	}
+	return card, nil
+}
+
+func (e *CardEditorScreen) readRatings(card *engine.WrestlerCard) error {
+	for _, f := range ratingFields {
+		letter := strings.ToUpper(strings.TrimSpace(e.fieldValue(f.label)))
+		rating, ok := ratingsByLetter[letter]
+		if !ok {
+			return fmt.Errorf("%s must be A, B, or C (got %q)", f.label, letter)
+		}
+		*f.target(card) = rating
+	}
 	return nil
+}
+
+func (e *CardEditorScreen) readNumbers(card *engine.WrestlerCard) error {
+	for _, f := range intFields {
+		v := e.fieldInt(f.label)
+		if v < f.min || v > f.max {
+			return fmt.Errorf("%s must be %d to %d (got %d)", f.label, f.min, f.max, v)
+		}
+		*f.target(card) = v
+	}
+	return nil
+}
+
+func (e *CardEditorScreen) readFinisher(card *engine.WrestlerCard) error {
+	if card.Finisher.Name == "" {
+		return errors.New("Finisher Name cannot be empty")
+	}
+	if err := applyFinisherRoll(&card.Finisher, e.fieldValue(finisherRollLabel)); err != nil {
+		return fmt.Errorf("Finisher Roll: %w", err)
+	}
+	return nil
+}
+
+func (e *CardEditorScreen) readOffense(card *engine.WrestlerCard) error {
+	for lvl := range card.Offense {
+		for slot := range card.Offense[lvl] {
+			move, err := parseMoveLine(e.fieldValue(moveLabel(lvl+1, slot+1)))
+			if err != nil {
+				return fmt.Errorf("L%d Move %d: %w", lvl+1, slot+1, err)
+			}
+			card.Offense[lvl][slot] = move
+		}
+	}
+	return nil
+}
+
+func (e *CardEditorScreen) readDefense(card *engine.WrestlerCard) error {
+	for lvl := range card.Defense {
+		for slot := range card.Defense[lvl] {
+			outcome, err := parseDefenseLine(e.fieldValue(defenseLabel(lvl+1, slot+1)))
+			if err != nil {
+				return fmt.Errorf("L%d Def %d: %w", lvl+1, slot+1, err)
+			}
+			if e.base != nil && outcome.Type == engine.DefPIN {
+				outcome.PINThreshold = e.base.Defense[lvl][slot].PINThreshold
+			}
+			card.Defense[lvl][slot] = outcome
+		}
+	}
+	return nil
+}
+
+func cardFileName(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", "_")) + ".yaml"
+}
+
+func (e *CardEditorScreen) saveCard(g *Game) {
+	card, err := e.buildCard()
+	if err != nil {
+		e.setMessage("Validation: " + err.Error())
+		return
+	}
+	data, err := loader.MarshalCard(card)
+	if err != nil {
+		e.setMessage("Error: " + err.Error())
+		return
+	}
+	filename := cardFileName(card.Name)
+	if err := g.Store.SaveCardBytes(filename, data); err != nil {
+		e.setMessage("Error saving: " + err.Error())
+		return
+	}
+
+	if e.base != nil && e.base.Name != card.Name {
+		e.setMessage(fmt.Sprintf("Saved as new card %s (original %s kept)", filename, e.base.Name))
+	} else {
+		e.setMessage("Saved " + filename)
+	}
+	e.base = card
+	reloadRoster(g)
+}
+
+// ─── Drawing ────────────────────────────────────────────────────────────────
+
+const editorListTop = Margin + LineHeight*2
+
+func editorMessageY(screenH int) int {
+	return screenH - LineHeight*2 - Margin
+}
+
+func editorVisibleLines(screenH int) int {
+	return (editorMessageY(screenH) - editorListTop) / LineHeight
 }
 
 func (e *CardEditorScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 
-	visibleLines := (g.screenH - Margin*2 - LineHeight*3) / LineHeight
+	visibleLines := editorVisibleLines(g.screenH)
 	if visibleLines < 5 {
 		visibleLines = 5
 	}
-
-	// Auto-scroll to keep cursor visible
 	if e.cursor < e.scroll {
 		e.scroll = e.cursor
 	}
@@ -248,230 +404,29 @@ func (e *CardEditorScreen) Draw(screen *ebiten.Image, g *Game) {
 	if endIdx > len(e.fields) {
 		endIdx = len(e.fields)
 	}
-
 	for i := e.scroll; i < endIdx; i++ {
-		f := e.fields[i]
-		prefix := "  "
-		if i == e.cursor {
-			prefix = "> "
-		}
-
-		if f.Label[0] == '-' {
-			DrawText(screen, "  "+f.Label, Margin, y)
-		} else {
-			suffix := ""
-			if i == e.cursor && e.editing {
-				suffix = "_"
-			}
-			DrawText(screen, fmt.Sprintf("%s%-28s %s%s", prefix, f.Label+":", f.Value, suffix), Margin, y)
-		}
+		DrawText(screen, e.fieldLine(i), Margin, y)
 		y += LineHeight
 	}
 
 	if e.message != "" {
-		DrawText(screen, e.message, Margin, g.screenH-LineHeight*2-Margin)
+		DrawText(screen, e.message, Margin, editorMessageY(g.screenH))
 	}
 	DrawText(screen, fmt.Sprintf("Field %d/%d", e.cursor+1, len(e.fields)), Margin, g.screenH-LineHeight-Margin)
 }
 
-func (e *CardEditorScreen) validateCard() string {
-	name := strings.TrimSpace(e.fieldValue("Name"))
-	if name == "" {
-		return "Name cannot be empty"
+func (e *CardEditorScreen) fieldLine(i int) string {
+	f := e.fields[i]
+	if f.Type == FieldHeading {
+		return "  " + f.Label
 	}
-
-	// Validate ratings
-	for _, r := range []string{"Ropes", "Turnbuckle", "Ring", "Deathjump"} {
-		v := strings.ToUpper(strings.TrimSpace(e.fieldValue(r)))
-		if v != "A" && v != "B" && v != "C" {
-			return fmt.Sprintf("%s must be A, B, or C (got %q)", r, v)
-		}
+	prefix := "  "
+	if i == e.cursor {
+		prefix = "> "
 	}
-
-	// Validate numeric fields
-	type intRange struct {
-		label    string
-		min, max int
+	suffix := ""
+	if i == e.cursor && e.editing {
+		suffix = "_"
 	}
-	checks := []intRange{
-		{"PIN", 1, 12}, {"PIN Adv", 1, 12}, {"Cage", 1, 12},
-		{"DQ", 1, 12}, {"Agility", -5, 5}, {"Power", -5, 5},
-		{"Distractor", 1, 12}, {"Finisher Rating", 0, 8},
-	}
-	for _, c := range checks {
-		v := e.fieldInt(c.label)
-		if v < c.min || v > c.max {
-			return fmt.Sprintf("%s must be %d to %d (got %d)", c.label, c.min, c.max, v)
-		}
-	}
-
-	// Validate finisher name
-	if strings.TrimSpace(e.fieldValue("Finisher Name")) == "" {
-		return "Finisher Name cannot be empty"
-	}
-
-	// Validate offense moves
-	for lvl := 1; lvl <= 3; lvl++ {
-		for slot := 1; slot <= 6; slot++ {
-			label := fmt.Sprintf("L%d Move %d (name,power,deflvl)", lvl, slot)
-			val := e.fieldValue(label)
-			parts := strings.SplitN(val, ",", 3)
-			if len(parts) < 3 {
-				return fmt.Sprintf("L%d Move %d: use format name,power,deflvl", lvl, slot)
-			}
-			moveName := strings.TrimSpace(parts[0])
-			if moveName == "" {
-				return fmt.Sprintf("L%d Move %d: name cannot be empty", lvl, slot)
-			}
-			power, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
-			defLvl, _ := strconv.Atoi(strings.TrimSpace(parts[2]))
-			if power < 1 || power > 3 {
-				return fmt.Sprintf("L%d Move %d: power must be 1-3 (got %d)", lvl, slot, power)
-			}
-			if defLvl < 1 || defLvl > 3 {
-				return fmt.Sprintf("L%d Move %d: def_level must be 1-3 (got %d)", lvl, slot, defLvl)
-			}
-		}
-	}
-
-	// Validate defense outcomes
-	validTypes := map[string]bool{
-		"dazed": true, "hurt": true, "down": true, "reversal": true, "pin": true,
-	}
-	for lvl := 1; lvl <= 3; lvl++ {
-		for slot := 1; slot <= 6; slot++ {
-			label := fmt.Sprintf("L%d Def %d (type,power)", lvl, slot)
-			val := e.fieldValue(label)
-			parts := strings.SplitN(val, ",", 2)
-			if len(parts) < 2 {
-				return fmt.Sprintf("L%d Def %d: use format type,power", lvl, slot)
-			}
-			dtype := strings.ToLower(strings.TrimSpace(parts[0]))
-			if !validTypes[dtype] {
-				return fmt.Sprintf("L%d Def %d: type must be dazed/hurt/down/reversal/pin", lvl, slot)
-			}
-			power, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
-			if power < 1 || power > 3 {
-				return fmt.Sprintf("L%d Def %d: power must be 1-3 (got %d)", lvl, slot, power)
-			}
-		}
-	}
-
-	return "" // No errors
-}
-
-func (e *CardEditorScreen) saveCard(g *Game) {
-	// Validate before saving
-	if errMsg := e.validateCard(); errMsg != "" {
-		e.message = "Validation: " + errMsg
-		e.msgTimer = 300
-		return
-	}
-
-	// Build YAML structure from fields
-	data := make(map[string]any)
-	data["name"] = e.fields[0].Value
-
-	data["ropes"] = e.fieldValue("Ropes")
-	data["turnbuckle"] = e.fieldValue("Turnbuckle")
-	data["ring"] = e.fieldValue("Ring")
-	data["deathjump"] = e.fieldValue("Deathjump")
-	data["pin"] = e.fieldInt("PIN")
-	data["pin_adv"] = e.fieldInt("PIN Adv")
-	data["cage"] = e.fieldInt("Cage")
-	data["dq"] = e.fieldInt("DQ")
-	data["agility"] = e.fieldInt("Agility")
-	data["power"] = e.fieldInt("Power")
-	data["distractor"] = e.fieldInt("Distractor")
-
-	data["finisher"] = map[string]any{
-		"name":   e.fieldValue("Finisher Name"),
-		"rating": e.fieldInt("Finisher Rating"),
-	}
-
-	// Offense
-	var offense [3][6]map[string]any
-	for lvl := 0; lvl < 3; lvl++ {
-		for slot := 0; slot < 6; slot++ {
-			label := fmt.Sprintf("L%d Move %d (name,power,deflvl)", lvl+1, slot+1)
-			val := e.fieldValue(label)
-			parts := strings.SplitN(val, ",", 3)
-			name := val
-			power := 1
-			defLvl := 1
-			if len(parts) >= 3 {
-				name = strings.TrimSpace(parts[0])
-				if v, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-					power = v
-				}
-				if v, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil {
-					defLvl = v
-				}
-			}
-			offense[lvl][slot] = map[string]any{
-				"name":      name,
-				"power":     power,
-				"def_level": defLvl,
-			}
-		}
-	}
-	data["offense"] = offense
-
-	// Defense
-	var defense [3][6]map[string]any
-	for lvl := 0; lvl < 3; lvl++ {
-		for slot := 0; slot < 6; slot++ {
-			label := fmt.Sprintf("L%d Def %d (type,power)", lvl+1, slot+1)
-			val := e.fieldValue(label)
-			parts := strings.SplitN(val, ",", 2)
-			dtype := "dazed"
-			power := 1
-			if len(parts) >= 2 {
-				dtype = strings.TrimSpace(parts[0])
-				if v, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-					power = v
-				}
-			}
-			defense[lvl][slot] = map[string]any{
-				"type":  dtype,
-				"power": power,
-			}
-		}
-	}
-	data["defense"] = defense
-
-	yamlBytes, err := yaml.Marshal(data)
-	if err != nil {
-		e.message = "Error: " + err.Error()
-		e.msgTimer = 180
-		return
-	}
-
-	filename := strings.ToLower(strings.ReplaceAll(e.fields[0].Value, " ", "_")) + ".yaml"
-	err = g.Store.SaveCardBytes(filename, yamlBytes)
-	if err != nil {
-		e.message = "Error saving: " + err.Error()
-		e.msgTimer = 180
-		return
-	}
-
-	e.message = "Saved " + filename
-	e.msgTimer = 180
-
-	// Reload roster
-	reloadRoster(g)
-}
-
-func (e *CardEditorScreen) fieldValue(label string) string {
-	for _, f := range e.fields {
-		if f.Label == label {
-			return f.Value
-		}
-	}
-	return ""
-}
-
-func (e *CardEditorScreen) fieldInt(label string) int {
-	n, _ := strconv.Atoi(strings.TrimSpace(e.fieldValue(label)))
-	return n
+	return fmt.Sprintf("%s%-40s %s%s", prefix, f.Label+":", f.Value, suffix)
 }

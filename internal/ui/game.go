@@ -159,11 +159,24 @@ func DrawText(screen *ebiten.Image, text string, x, y int) {
 	ebitenutil.DebugPrintAt(screen, text, x, y)
 }
 
+// ReportCardProblems shows a banner for cards that were skipped or that use
+// instructions the engine does not know.
+func (g *Game) ReportCardProblems(problems []string) {
+	if len(problems) > 0 {
+		g.SetNotice("CARD PROBLEM: " + loader.SummarizeProblems(problems))
+	}
+}
+
 func reloadRoster(g *Game) {
-	roster, err := loader.LoadAllCards(g.Store)
-	if err == nil && len(roster) > 0 {
+	roster, problems, err := loader.LoadAllCards(g.Store)
+	if err != nil {
+		g.SetNotice("Cards could not be reloaded: " + err.Error())
+		return
+	}
+	if len(roster) > 0 {
 		g.Roster = roster
 	}
+	g.ReportCardProblems(problems)
 }
 
 // FilterRoster returns only the wrestlers whose names are in the given list.

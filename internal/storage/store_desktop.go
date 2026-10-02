@@ -78,3 +78,19 @@ func (s *DesktopStore) LoadCareerJSON() ([]byte, error) {
 func (s *DesktopStore) SaveCareerJSON(data []byte) error {
 	return os.WriteFile(s.careerPath(), data, 0600)
 }
+
+func (s *DesktopStore) settingsPath() string {
+	return filepath.Join(s.dataDir, "..", "settings.json")
+}
+
+func (s *DesktopStore) LoadSettingsJSON() ([]byte, error) {
+	data, err := os.ReadFile(s.settingsPath())
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return data, err
+}
+
+func (s *DesktopStore) SaveSettingsJSON(data []byte) error {
+	return os.WriteFile(s.settingsPath(), data, 0600)
+}

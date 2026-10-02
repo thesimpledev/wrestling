@@ -178,6 +178,7 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 	match := engine.NewMatch(card1, card2)
 	match.Type = booked.Type
 	match.InitForMatchType()
+	match.Rules = g.Rules
 	match.ApplyInjuries(g.Injuries.IsInjured)
 
 	if cs.fed.IsRival(s1Name, s2Name) {
@@ -274,6 +275,7 @@ func (cs *CareerShowScreen) simulateTournament(g *Game) {
 			match := engine.NewMatch(w1, w2)
 			match.Type = engine.MatchSingles
 			match.InitForMatchType()
+			match.Rules = g.Rules
 			match.ApplyInjuries(g.Injuries.IsInjured)
 			ts.match = match
 			ts.events = match.Run()

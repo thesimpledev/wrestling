@@ -462,6 +462,7 @@ func TestFeudTableTreatsTheDisqualifiedWrestlerAsYou(t *testing.T) {
 	dice := script(1, 3, 3, 3, 4)
 	m := singlesMatch(att, def, dice)
 	m.IsFeud = true
+	m.Rules.AvoidDisMoves = false
 	m.executeTurn()
 	wantDiceUsed(t, dice)
 	wantResult(t, m, "D", "dq")

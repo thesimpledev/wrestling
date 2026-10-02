@@ -61,6 +61,7 @@ type moveYAML struct {
 	Tags     []string `yaml:"tags"`
 	Chart    string   `yaml:"chart"`
 	Choice   string   `yaml:"choice"`
+	DQNumber int      `yaml:"dis_number"`
 }
 
 type defYAML struct {
@@ -121,6 +122,7 @@ func ParseCard(data []byte) (*engine.WrestlerCard, error) {
 				Tags:      parseTags(rm.Tags),
 				ChartType: rm.Chart,
 				ChoiceKey: rm.Choice,
+				DQNumber:  rm.DQNumber,
 			}
 
 			rd := raw.Defense[lvl][slot]

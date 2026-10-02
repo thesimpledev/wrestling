@@ -259,6 +259,7 @@ func (t *TournamentScreen) startCurrentMatch(g *Game) {
 	match := engine.NewMatch(w1, w2)
 	match.Type = engine.MatchSingles
 	match.InitForMatchType()
+	match.Rules = g.Rules
 	match.ApplyInjuries(g.Injuries.IsInjured)
 
 	t.match = match

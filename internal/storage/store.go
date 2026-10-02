@@ -21,4 +21,11 @@ type Store interface {
 
 	// SaveCareerJSON persists the career save as JSON bytes.
 	SaveCareerJSON(data []byte) error
+
+	// LoadSettingsJSON returns the raw JSON bytes for the game settings.
+	// Returns nil, nil if no settings have been saved yet.
+	LoadSettingsJSON() ([]byte, error)
+
+	// SaveSettingsJSON persists the game settings as JSON bytes.
+	SaveSettingsJSON(data []byte) error
 }

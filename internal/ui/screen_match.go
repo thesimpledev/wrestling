@@ -28,6 +28,7 @@ func NewMatchScreen(card1, card2 *engine.WrestlerCard, matchType engine.MatchTyp
 	match := engine.NewMatch(card1, card2)
 	match.Type = matchType
 	match.InitForMatchType()
+	match.Rules = g.Rules
 
 	return &MatchScreen{
 		match: match,
@@ -45,6 +46,7 @@ func NewMatchScreen(card1, card2 *engine.WrestlerCard, matchType engine.MatchTyp
 
 func NewTagMatchScreen(match *engine.Match, g *Game) *MatchScreen {
 	match.InitForMatchType()
+	match.Rules = g.Rules
 
 	return &MatchScreen{
 		match: match,

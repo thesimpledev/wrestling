@@ -49,6 +49,7 @@ var menuOptions = []string{
 	"Tournament",
 	"Create New Card",
 	"Edit Existing Card",
+	"Settings",
 }
 var matchTypes = []engine.MatchType{
 	engine.MatchSingles,
@@ -69,6 +70,7 @@ const (
 	menuTournament  = 7
 	menuNewCard     = 8
 	menuEditCard    = 9
+	menuSettings    = 10
 )
 
 func (m *MenuScreen) isSelected(idx int) bool {
@@ -141,6 +143,9 @@ func (m *MenuScreen) Update(g *Game) error {
 				return nil
 			case menuNewCard:
 				g.SetScreen(NewCardEditorScreen(nil))
+				return nil
+			case menuSettings:
+				g.SetScreen(NewSettingsScreen())
 				return nil
 			case menuEditCard:
 				m.phase = PhaseSelectWrestler1

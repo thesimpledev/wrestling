@@ -71,14 +71,18 @@ type Match struct {
 	distractionUsed  [2]bool // Each side can use distraction once per match
 	IsFeud           bool    // Whether this is a feud match
 
+	// Rules holds the optional rules in force for this match.
+	Rules Rules
+
 	dice Dice
 }
 
 // NewMatch creates a match between two wrestlers (singles).
 func NewMatch(card1, card2 *WrestlerCard) *Match {
 	m := &Match{
-		Type: MatchSingles,
-		dice: randomDice{},
+		Type:  MatchSingles,
+		Rules: DefaultRules(),
+		dice:  randomDice{},
 		Sides: [2]*Side{
 			{Wrestlers: []*WrestlerState{{Card: card1, CurrentPIN: card1.PINAdv}}},
 			{Wrestlers: []*WrestlerState{{Card: card2, CurrentPIN: card2.PINAdv}}},
@@ -90,8 +94,9 @@ func NewMatch(card1, card2 *WrestlerCard) *Match {
 // NewTagMatch creates a tag team match.
 func NewTagMatch(team1a, team1b, team2a, team2b *WrestlerCard) *Match {
 	m := &Match{
-		Type: MatchTag,
-		dice: randomDice{},
+		Type:  MatchTag,
+		Rules: DefaultRules(),
+		dice:  randomDice{},
 		Sides: [2]*Side{
 			{Wrestlers: []*WrestlerState{
 				{Card: team1a, CurrentPIN: team1a.PINAdv},
@@ -267,8 +272,22 @@ func (m *Match) executeTurn() {
 
 	att := m.attacker()
 	def := m.defender()
-	move, offRoll := m.rollOffenseMove(att)
+	move := m.announceOffenseMove(att, def)
 
+	if m.declinesMove(att, def, move) {
+		m.emit(newEvent(EventMove, "%s decides against the %s and rolls again one level lower.", att.Card.Name, move.Name))
+		if m.offLevel > 0 {
+			m.offLevel--
+		}
+		move = m.announceOffenseMove(att, def)
+	}
+
+	m.resolveMove(att, def, move)
+}
+
+// announceOffenseMove rolls the attacker's move and puts it in the log.
+func (m *Match) announceOffenseMove(att, def *WrestlerState) Move {
+	move, offRoll := m.rollOffenseMove(att)
 	m.emit(Event{
 		Type:     EventMove,
 		Text:     fmt.Sprintf("%s (Level %d, roll %d): %s!", att.Card.Name, m.offLevel+1, offRoll, move.Name),
@@ -277,19 +296,15 @@ func (m *Match) executeTurn() {
 		Roll:     offRoll,
 		Level:    m.offLevel + 1,
 	})
-
-	m.resolveMove(att, def, move)
+	return move
 }
 
 func (m *Match) resolveMove(att, def *WrestlerState, move Move) {
 	if !m.passesStatChecks(att, def, move) {
 		return
 	}
-	if move.HasTag(TagDQ) {
-		m.emit(newEvent(EventDQ, "%s goes for a dirty move while the referee is watching!", att.Card.Name))
-		if m.rollDQ(att) {
-			return
-		}
+	if move.HasTag(TagDQ) && m.dirtyMoveDisqualifies(att, move) {
+		return
 	}
 	if move.HasTag(TagAdd1) {
 		def.CurrentPIN++
@@ -306,6 +321,17 @@ func (m *Match) resolveMove(att, def *WrestlerState, move Move) {
 	default:
 		m.resolveNormalDefense(att, def, move)
 	}
+}
+
+// dirtyMoveDisqualifies rolls for a "dis" move and reports whether the
+// attacker was disqualified.
+func (m *Match) dirtyMoveDisqualifies(att *WrestlerState, move Move) bool {
+	m.emit(newEvent(EventDQ, "%s goes for a dirty move while the referee is watching!", att.Card.Name))
+	if !m.dqPossible() {
+		m.explainNoDQ()
+		return false
+	}
+	return m.rollDQAgainst(att, m.disNumber(att, move))
 }
 
 // passesStatChecks applies the (ag) and (pw) instructions: the move works only

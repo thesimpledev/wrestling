@@ -105,6 +105,7 @@ func (b *BattleRoyalScreen) startNextMatch(g *Game) {
 	match := engine.NewMatch(b.champion, challenger)
 	match.Type = engine.MatchSingles
 	match.InitForMatchType()
+	match.Rules = g.Rules
 	match.ApplyInjuries(g.Injuries.IsInjured)
 
 	// Apply fatigue carry-forward to champion

@@ -41,6 +41,7 @@ type Game struct {
 	Roster   []*engine.WrestlerCard
 	Store    storage.Store
 	Injuries loader.InjuryStore
+	Rules    engine.Rules
 }
 
 func NewGame(roster []*engine.WrestlerCard, store storage.Store) *Game {
@@ -55,6 +56,13 @@ func NewGame(roster []*engine.WrestlerCard, store storage.Store) *Game {
 		g.SetNotice("Saved injuries could not be read and will be replaced on the next save.")
 	}
 	g.Injuries = injuries
+
+	rules, err := loader.LoadRules(store)
+	if err != nil {
+		g.SetNotice("Saved settings could not be read, so the defaults are in use.")
+	}
+	g.Rules = rules
+
 	g.screen = NewMenuScreen()
 	return g
 }

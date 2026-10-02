@@ -36,6 +36,10 @@ const (
 	TagSingles MoveTag = "singles" // Singles only move
 	TagLeave   MoveTag = "lv"      // Option to leave the ring
 	TagRoll    MoveTag = "roll"    // Roll finisher
+
+	// TagChartChoice marks a chart move followed by (c): the wrestler may
+	// decline it and roll again.
+	TagChartChoice MoveTag = "c"
 )
 
 // Move represents one entry in a wrestler's offense grid.
@@ -48,6 +52,9 @@ type Move struct {
 	ChartType string // "ropes", "turnbuckle", "ring", "deathjump"
 	// For choice moves: which choice letter (A-H)
 	ChoiceKey string
+	// For "dis" moves: the number printed with the instruction, or 0 to use
+	// the wrestler's Disqualification rating.
+	DQNumber int
 }
 
 // IsFinisher returns true if the move name is in ALL CAPS (the game's convention).

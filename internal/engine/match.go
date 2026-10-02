@@ -168,27 +168,99 @@ func (m *Match) rollForInitiative() {
 	m.emit(newEvent(EventMatchStart, "%s starts on offense!", m.attacker().Card.Name))
 }
 
-func (m *Match) executeTurn() {
-	// Track ref recovery
-	if m.refDown {
+// levelIndex converts a card level number (1 to 3) to an offense or defense grid index.
+func levelIndex(level int) int {
+	switch {
+	case level <= 1:
+		return 0
+	case level >= 3:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// betterRating reports whether agility or power rating a beats rating b.
+// The rulebook rates -5 as excellent and +5 as poor.
+func betterRating(a, b int) bool {
+	return a < b
+}
+
+func (m *Match) setOffense(ws *WrestlerState, level int) {
+	m.onOffense = m.sideOf(ws)
+	m.offLevel = levelIndex(level)
+}
+
+func (m *Match) addFatigue(ws *WrestlerState) {
+	ws.CurrentPIN++
+	m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d from fatigue.", ws.Card.Name, ws.CurrentPIN))
+}
+
+// tickReferee counts down the moves a downed referee misses and brings him
+// back once he has missed them all.
+func (m *Match) tickReferee() {
+	if !m.refDown {
+		return
+	}
+	if m.refDownTurns > 0 {
 		m.refDownTurns--
-		if m.refDownTurns <= 0 {
-			m.refDown = false
-			m.emit(newEvent(EventRefRecover, "The referee recovers and is back on his feet!"))
+		return
+	}
+	m.refDown = false
+	m.emit(newEvent(EventRefRecover, "The referee recovers and is back on his feet!"))
+}
+
+const maxMoveRerolls = 50
+
+func (m *Match) moveAllowed(move Move) bool {
+	if move.HasTag(TagTagTeam) {
+		return m.Type == MatchTag
+	}
+	if move.HasTag(TagSingles) {
+		return m.Type != MatchTag
+	}
+	return true
+}
+
+func (m *Match) firstAllowedSlot(moves [6]Move) (int, bool) {
+	for slot, move := range moves {
+		if m.moveAllowed(move) {
+			return slot, true
 		}
 	}
+	return 0, false
+}
 
-	// Tag match: attacker may tag out to partner on offense
+// rollOffenseMove rolls on the attacker's current offense level, rolling again
+// while the result is a tag-only move in a singles match or the reverse.
+func (m *Match) rollOffenseMove(att *WrestlerState) (Move, int) {
+	moves := att.Card.Offense[m.offLevel]
+	roll := m.rollOne()
+	fallback, anyAllowed := m.firstAllowedSlot(moves)
+	if !anyAllowed {
+		return moves[roll-1], roll
+	}
+	for attempt := 0; attempt < maxMoveRerolls && !m.moveAllowed(moves[roll-1]); attempt++ {
+		m.emit(newEvent(EventRoll, "%s rolls %s, which does not apply in this match, and rolls again.",
+			att.Card.Name, moves[roll-1].Name))
+		roll = m.rollOne()
+	}
+	if !m.moveAllowed(moves[roll-1]) {
+		roll = fallback + 1
+	}
+	return moves[roll-1], roll
+}
+
+func (m *Match) executeTurn() {
+	m.tickReferee()
+
 	if m.Type == MatchTag {
 		m.maybeTagOnOffense()
 	}
 
 	att := m.attacker()
 	def := m.defender()
-
-	// Step 1: Attacker rolls 1d6 on current offense level
-	offRoll := m.rollOne()
-	move := att.Card.Offense[m.offLevel][offRoll-1]
+	move, offRoll := m.rollOffenseMove(att)
 
 	m.emit(Event{
 		Type:     EventMove,
@@ -199,83 +271,71 @@ func (m *Match) executeTurn() {
 		Level:    m.offLevel + 1,
 	})
 
-	// Handle special move tags before normal resolution
 	m.resolveMove(att, def, move)
 }
 
 func (m *Match) resolveMove(att, def *WrestlerState, move Move) {
-	// Check agility/power requirements
-	if move.HasTag(TagAgility) {
-		if att.Card.Agility < def.Card.Agility {
-			m.emit(newEvent(EventDefense, "%s's agility isn't good enough — %s counters!", att.Card.Name, def.Card.Name))
-			m.switchOffense()
-			m.offLevel = 1 // Level 2 defense -> offense
-			return
-		}
-		m.emit(newEvent(EventMove, "%s has the agility advantage — the move connects!", att.Card.Name))
+	if !m.passesStatChecks(att, def, move) {
+		return
 	}
-
-	if move.HasTag(TagPower) {
-		if att.Card.Power < def.Card.Power {
-			m.emit(newEvent(EventDefense, "%s isn't powerful enough — %s overpowers and counters!", att.Card.Name, def.Card.Name))
-			m.switchOffense()
-			m.offLevel = 1
-			return
-		}
-		m.emit(newEvent(EventMove, "%s has the power advantage — the move connects!", att.Card.Name))
-	}
-
-	// Check for DQ move
 	if move.HasTag(TagDQ) {
-		m.emit(newEvent(EventDQ, "%s goes for a dirty move — the referee is watching!", att.Card.Name))
+		m.emit(newEvent(EventDQ, "%s goes for a dirty move while the referee is watching!", att.Card.Name))
 		if m.rollDQ(att) {
-			return // Match ended by DQ
+			return
 		}
 	}
-
-	// Check for Add1 (automatically adds fatigue to opponent)
 	if move.HasTag(TagAdd1) {
 		def.CurrentPIN++
 		m.emit(newEvent(EventFatigue, "Devastating move! %s's PIN rating increases to %d!", def.Card.Name, def.CurrentPIN))
 	}
 
-	// Check for chart moves
-	if move.HasTag(TagChart) {
-		chartType := move.ChartType
-		// Cage match: "out of the ring" becomes "face into cage"
-		if m.Type == MatchCage && chartType == "ring" {
-			m.emit(newEvent(EventMove, "%s smashes %s face-first into the cage! - 3", att.Card.Name, def.Card.Name))
-			m.offLevel = 2
-			return
-		}
-		m.resolveChart(att, def, chartType)
-		return
-	}
-
-	// Check for choice situation
-	if move.HasTag(TagChoice) {
+	switch {
+	case move.HasTag(TagChart):
+		m.resolveChartMove(att, def, move.ChartType)
+	case move.HasTag(TagChoice):
 		m.resolveChoice(att, def, move.ChoiceKey)
-		return
-	}
-
-	// Check if the move is a finisher (ALL CAPS name)
-	if move.IsFinisher() {
+	case m.offLevel == 2 && move.IsFinisher():
 		m.resolveFinisher(att, def)
+	default:
+		m.resolveNormalDefense(att, def, move)
+	}
+}
+
+// passesStatChecks applies the (ag) and (pw) instructions: the move works only
+// when the attacker's rating is the same as or better than the opponent's.
+func (m *Match) passesStatChecks(att, def *WrestlerState, move Move) bool {
+	if move.HasTag(TagAgility) && betterRating(def.Card.Agility, att.Card.Agility) {
+		m.emit(newEvent(EventDefense, "%s's agility isn't good enough and %s counters!", att.Card.Name, def.Card.Name))
+		m.setOffense(def, 2)
+		return false
+	}
+	if move.HasTag(TagAgility) {
+		m.emit(newEvent(EventMove, "%s is agile enough and the move connects!", att.Card.Name))
+	}
+	if move.HasTag(TagPower) && betterRating(def.Card.Power, att.Card.Power) {
+		m.emit(newEvent(EventDefense, "%s isn't powerful enough and %s overpowers him!", att.Card.Name, def.Card.Name))
+		m.setOffense(def, 2)
+		return false
+	}
+	if move.HasTag(TagPower) {
+		m.emit(newEvent(EventMove, "%s is powerful enough and the move connects!", att.Card.Name))
+	}
+	return true
+}
+
+// resolveChartMove sends the defender to a chart, or into the cage wall when
+// an out of the ring move is rolled in a cage match.
+func (m *Match) resolveChartMove(att, def *WrestlerState, chartType string) {
+	if m.Type == MatchCage && chartType == "ring" {
+		m.emit(newEvent(EventMove, "%s smashes %s face-first into the cage! - 3", att.Card.Name, def.Card.Name))
+		m.offLevel = 2
 		return
 	}
-
-	// Normal move — defender rolls on defense
-	m.resolveNormalDefense(att, def, move)
+	m.resolveChart(att, def, chartType)
 }
 
 func (m *Match) resolveNormalDefense(att, def *WrestlerState, move Move) {
-	defLevel := move.DefLevel - 1
-	if defLevel < 0 {
-		defLevel = 0
-	}
-	if defLevel > 2 {
-		defLevel = 2
-	}
+	defLevel := levelIndex(move.DefLevel)
 
 	defRoll := m.rollOne()
 	outcome := def.Card.Defense[defLevel][defRoll-1]
@@ -291,89 +351,68 @@ func (m *Match) resolveNormalDefense(att, def *WrestlerState, move Move) {
 	m.resolveDefense(outcome)
 }
 
+// resolveDefense applies a defense result. The number after dazed, hurt or
+// down is the offense level the attacker rolls on next.
 func (m *Match) resolveDefense(outcome DefenseOutcome) {
 	def := m.defender()
 
 	switch outcome.Type {
-	case DefDazed:
-		m.emit(defenseEvent(def.Card.Name, DefDazed))
-		m.advanceOffLevel(outcome.Power)
-
-	case DefHurt:
-		m.emit(defenseEvent(def.Card.Name, DefHurt))
-		m.advanceOffLevel(outcome.Power)
-
+	case DefDazed, DefHurt:
+		m.emit(defenseEvent(def.Card.Name, outcome.Type))
+		m.offLevel = levelIndex(outcome.Power)
 	case DefDown:
-		m.emit(defenseEvent(def.Card.Name, DefDown))
-
-		// Check for interference on down-3
-		if outcome.Power == 3 {
-			defIdx := 1 - m.onOffense
-			if m.shouldUseInterference(defIdx) {
-				m.emit(newEvent(EventInterference, "%s calls for outside interference!", def.Card.Name))
-				m.resolveInterference(defIdx)
-				return
-			}
-		}
-
-		m.advanceOffLevel(outcome.Power)
-
-		// Check for leaving the ring option
-		if outcome.HasTag(TagLeave) && outcome.Power == 3 {
-			m.emit(newEvent(EventChart, "%s has the option to leave the ring!", def.Card.Name))
-			// AI decision: leave if ring rating is A or B
-			if def.Card.Ring <= RatingB {
-				m.emit(newEvent(EventChart, "%s rolls out of the ring!", def.Card.Name))
-				m.resolveChart(def, m.attacker(), "ring")
-				return
-			}
-		}
-
+		m.resolveDown(def, outcome)
 	case DefReversal:
 		m.emit(reversalEvent(def.Card.Name))
 		m.switchOffense()
-		if outcome.Power >= 1 && outcome.Power <= 3 {
-			m.offLevel = outcome.Power - 1
-		} else {
-			m.offLevel = 0
-		}
-
+		m.offLevel = levelIndex(outcome.Power)
 	case DefPIN:
-		att := m.attacker()
-		defIdx := 1 - m.onOffense
-
-		// Check for outside interference (higher priority, used when very desperate)
-		if m.shouldUseInterference(defIdx) {
-			m.emit(newEvent(EventInterference, "%s calls for outside interference!", def.Card.Name))
-			m.resolveInterference(defIdx)
-			return
-		}
-
-		m.emit(newEvent(EventPin, "%s is in a pinning predicament!", def.Card.Name))
-
-		// Check for distraction before PIN roll
-		if m.tryDistraction(defIdx) {
-			return
-		}
-
-		m.resolvePIN(att, def)
+		m.resolvePinPredicament(def)
 	}
 }
 
-// advanceOffLevel moves the offense level up based on move power.
-func (m *Match) advanceOffLevel(power int) {
-	switch {
-	case power >= 3:
-		m.offLevel = 2 // Level 3
-	case power == 2:
-		if m.offLevel < 1 {
-			m.offLevel = 1 // At least Level 2
-		}
-	default:
-		if m.offLevel < 1 {
-			m.offLevel = 1
-		}
+func (m *Match) resolveDown(def *WrestlerState, outcome DefenseOutcome) {
+	m.emit(defenseEvent(def.Card.Name, DefDown))
+
+	defIdx := m.sideOf(def)
+	if outcome.Power == 3 && m.shouldUseInterference(defIdx) {
+		m.emit(newEvent(EventInterference, "%s calls for outside interference!", def.Card.Name))
+		m.resolveInterference(defIdx)
+		return
 	}
+
+	m.offLevel = levelIndex(outcome.Power)
+	if outcome.Power == 3 && outcome.HasTag(TagLeave) {
+		m.offerToLeaveRing(def)
+	}
+}
+
+// offerToLeaveRing handles the (lv) option. The simulator leaves when the
+// wrestler's Ring rating is A or B, and he rolls the chart on his own rating.
+func (m *Match) offerToLeaveRing(def *WrestlerState) {
+	m.emit(newEvent(EventChart, "%s has the option to leave the ring!", def.Card.Name))
+	if def.Card.Ring > RatingB {
+		return
+	}
+	m.emit(newEvent(EventChart, "%s rolls out of the ring!", def.Card.Name))
+	m.resolveChart(m.attacker(), def, "ring")
+}
+
+func (m *Match) resolvePinPredicament(def *WrestlerState) {
+	att := m.attacker()
+	defIdx := m.sideOf(def)
+
+	if m.shouldUseInterference(defIdx) {
+		m.emit(newEvent(EventInterference, "%s calls for outside interference!", def.Card.Name))
+		m.resolveInterference(defIdx)
+		return
+	}
+
+	m.emit(newEvent(EventPin, "%s is in a pinning predicament!", def.Card.Name))
+	if m.tryDistraction(defIdx) {
+		return
+	}
+	m.resolvePIN(att, def)
 }
 
 func (m *Match) switchOffense() {
@@ -435,160 +474,6 @@ func (m *Match) resolveChart(att, def *WrestlerState, chartType string) {
 	m.resolveChartOutcome(att, def, outcome, chartType)
 }
 
-func (m *Match) resolveChartOutcome(att, def *WrestlerState, outcome *ChartOutcome, chartType string) {
-	switch outcome.Type {
-	case ChartRollOnOffense:
-		// The chart-roller (defender) gets offense at the specified level
-		m.onOffense = m.sideOf(def)
-		m.offLevel = outcome.Level - 1
-
-	case ChartOppRollOnOffense:
-		// The attacker (who threw them into chart) gets offense
-		m.onOffense = m.sideOf(att)
-		m.offLevel = outcome.Level - 1
-
-	case ChartRollOnDefense:
-		// Opponent rolls on defense at specified level
-		defRoll := m.rollOne()
-		defOutcome := att.Card.Defense[outcome.Level-1][defRoll-1]
-		m.emit(Event{
-			Type:     EventDefense,
-			Text:     fmt.Sprintf("%s (Defense Level %d, roll %d): %s", att.Card.Name, outcome.Level, defRoll, defOutcome.Type),
-			Defender: att.Card.Name,
-			Roll:     defRoll,
-			Level:    outcome.Level,
-		})
-		// Temporarily swap perspective for defense resolution
-		origOff := m.onOffense
-		m.onOffense = m.sideOf(def)
-		m.resolveDefense(defOutcome)
-		if !m.over && m.onOffense == m.sideOf(def) {
-			// If defense didn't cause a reversal, restore
-			_ = origOff
-		}
-
-	case ChartRollPIN:
-		// Opponent of chart-roller is pinned (att threw def into chart, def countered and pins att)
-		m.emit(newEvent(EventPin, "%s is in a pinning predicament!", att.Card.Name))
-		m.resolvePIN(def, att)
-
-	case ChartRollYourPIN:
-		// Chart-roller (defender) is pinned
-		m.emit(newEvent(EventPin, "%s is in a pinning predicament!", def.Card.Name))
-		m.resolvePIN(att, def)
-
-	case ChartRollAgain:
-		m.resolveChart(att, def, chartType)
-
-	case ChartRollDQ:
-		// Current chart roller might get DQ'd
-		if m.rollDQ(def) {
-			return
-		}
-		// If no DQ, follow up
-		if outcome.ThenType == ChartRollOnOffense {
-			m.onOffense = m.sideOf(def)
-			m.offLevel = outcome.ThenLevel - 1
-		}
-
-	case ChartOppRollDQ:
-		// Attacker (the one who threw them) might get DQ'd
-		if m.rollDQ(att) {
-			return
-		}
-		if outcome.ThenType == ChartOppRollOnOffense {
-			m.onOffense = m.sideOf(att)
-			m.offLevel = outcome.ThenLevel - 1
-		}
-
-	case ChartBothRollDQ:
-		// Both wrestlers roll DQ
-		m.emit(newEvent(EventDQ, "Both wrestlers may be disqualified!"))
-		if m.rollDQ(att) {
-			return
-		}
-		if m.rollDQ(def) {
-			return
-		}
-		// Neither DQ'd — roll 1d6: even = def wins brawl, odd = att wins
-		brawlRoll := m.rollOne()
-		if brawlRoll%2 == 0 {
-			m.emit(newEvent(EventChart, "%s wins the brawl! (roll %d)", def.Card.Name, brawlRoll))
-			m.onOffense = m.sideOf(def)
-		} else {
-			m.emit(newEvent(EventChart, "%s wins the brawl! (roll %d)", att.Card.Name, brawlRoll))
-			m.onOffense = m.sideOf(att)
-		}
-		m.offLevel = 2 // Level 3
-
-	case ChartPowerCheck:
-		if def.Card.Power > att.Card.Power {
-			m.emit(newEvent(EventChart, "%s is more powerful and knocks the opponent down with a shoulder tackle!", def.Card.Name))
-			m.onOffense = m.sideOf(def)
-			m.offLevel = 1 // Level 2
-		} else {
-			m.emit(newEvent(EventChart, "%s is overpowered! The opponent knocks him down with a shoulder tackle!", def.Card.Name))
-			m.onOffense = m.sideOf(att)
-			m.offLevel = 1
-		}
-
-	case ChartAgilityCheck:
-		// Deathjump: if defender has better agility, they win the struggle
-		if def.Card.Agility > att.Card.Agility {
-			m.emit(newEvent(EventChart, "%s wins the struggle on the top rope with superior agility!", def.Card.Name))
-			m.onOffense = m.sideOf(def)
-		} else {
-			m.emit(newEvent(EventChart, "%s pushes %s off the top rope!", att.Card.Name, def.Card.Name))
-			m.onOffense = m.sideOf(att)
-		}
-		m.offLevel = 2 // Level 3
-
-	case ChartBetterRating:
-		defRating := m.getRating(def, outcome.RatingType)
-		attRating := m.getRating(att, outcome.RatingType)
-		if defRating < attRating { // Lower Rating value = better (A=0, B=1, C=2)
-			m.emit(newEvent(EventChart, "%s has the better %s rating and recovers first!", def.Card.Name, outcome.RatingType))
-			m.onOffense = m.sideOf(def)
-		} else {
-			m.emit(newEvent(EventChart, "%s recovers first!", att.Card.Name))
-			m.onOffense = m.sideOf(att)
-		}
-		m.offLevel = 2
-
-	case ChartRefDown:
-		refTurns := m.rollTwo().total()
-		m.refDown = true
-		m.refDownTurns = refTurns
-		m.emit(newEvent(EventRefDown, "THE REFEREE IS DOWN! He'll be out for %d moves!", refTurns))
-		// Roll 1d6: even = defender recovers, odd = attacker continues
-		whoRoll := m.rollOne()
-		if whoRoll%2 == 0 {
-			m.emit(newEvent(EventChart, "%s takes advantage of the chaos! (roll %d)", def.Card.Name, whoRoll))
-			m.onOffense = m.sideOf(def)
-		} else {
-			m.emit(newEvent(EventChart, "%s is still down — %s goes for the kill! (roll %d)", def.Card.Name, att.Card.Name, whoRoll))
-			m.onOffense = m.sideOf(att)
-		}
-		m.offLevel = 2
-
-	case ChartOppRollOnChart:
-		// Redirect to another chart (e.g., turnbuckle reversal -> opponent on turnbuckle chart)
-		m.resolveChart(def, att, outcome.ChartRef)
-
-	case ChartRollCountOut:
-		m.emit(newEvent(EventCountOut, "%s may be counted out!", def.Card.Name))
-		m.resolveCountOut(att, def)
-		if outcome.AddFatigue && !m.over {
-			def.CurrentPIN++
-			m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d!", def.Card.Name, def.CurrentPIN))
-		}
-		if !m.over {
-			m.onOffense = m.sideOf(att)
-			m.offLevel = 2
-		}
-	}
-}
-
 func (m *Match) getRating(ws *WrestlerState, ratingType string) Rating {
 	switch ratingType {
 	case "ropes":
@@ -604,188 +489,7 @@ func (m *Match) getRating(ws *WrestlerState, ratingType string) Rating {
 	}
 }
 
-// ─── CHOICE SITUATIONS ──────────────────────────────────────────────────────
-
-func (m *Match) resolveChoice(att, def *WrestlerState, choiceKey string) {
-	choice, ok := ChoiceSituations[choiceKey]
-	if !ok {
-		m.emit(newEvent(EventChart, "Unknown choice situation: %s — continuing normally.", choiceKey))
-		return
-	}
-
-	m.emit(newEvent(EventChart, "CHOICE SITUATION %s! %s must decide between %s or %s!",
-		choiceKey, att.Card.Name, choice.Option1.Name, choice.Option2.Name))
-
-	// AI picks the option with the better chance of success
-	opt := m.pickChoiceOption(att, def, choice)
-
-	if opt.IsChart {
-		m.emit(newEvent(EventChart, "%s chooses: %s!", att.Card.Name, opt.Name))
-		m.resolveChart(att, def, opt.ChartRef)
-		return
-	}
-
-	// Roll-based choice move
-	roll := m.rollTwo().total()
-	statMod := 0
-	if opt.StatType == "ag" {
-		statMod = def.Card.Agility // Plus or minus opponent's agility
-	} else if opt.StatType == "pw" {
-		statMod = def.Card.Power
-	}
-
-	adjustedThreshold := opt.Threshold - statMod // Opponent's stat reduces the threshold
-	m.emit(newEvent(EventChart, "%s tries a %s! (roll %d, needs %d or lower, adjusted for opponent's %s)",
-		att.Card.Name, opt.Name, roll, adjustedThreshold, opt.StatType))
-
-	if roll <= adjustedThreshold {
-		m.emit(newEvent(EventMove, "%s hits the %s!", att.Card.Name, opt.Name))
-		m.advanceOffLevel(opt.Power)
-	} else {
-		m.emit(newEvent(EventDefense, "The %s fails! %s takes over!", opt.Name, def.Card.Name))
-		m.switchOffense()
-		m.offLevel = 1 // Opponent rolls Level 2 offense on failure
-	}
-}
-
-func (m *Match) pickChoiceOption(att, def *WrestlerState, choice ChoiceSituation) ChoiceOption {
-	// Chart options are always viable
-	if choice.Option1.IsChart && !choice.Option2.IsChart {
-		// Compare: chart (unpredictable) vs roll check
-		// Pick whichever is more likely to succeed; for simplicity, prefer the roll if threshold is high
-		score2 := choice.Option2.Threshold
-		if choice.Option2.StatType == "ag" {
-			score2 -= def.Card.Agility
-		} else {
-			score2 -= def.Card.Power
-		}
-		if score2 >= 8 {
-			return choice.Option2
-		}
-		return choice.Option1
-	}
-	if choice.Option2.IsChart && !choice.Option1.IsChart {
-		score1 := choice.Option1.Threshold
-		if choice.Option1.StatType == "ag" {
-			score1 -= def.Card.Agility
-		} else {
-			score1 -= def.Card.Power
-		}
-		if score1 >= 8 {
-			return choice.Option1
-		}
-		return choice.Option2
-	}
-
-	// Both are roll checks — pick the one with a better effective threshold
-	score1 := choice.Option1.Threshold
-	if choice.Option1.StatType == "ag" {
-		score1 -= def.Card.Agility
-	} else {
-		score1 -= def.Card.Power
-	}
-	score2 := choice.Option2.Threshold
-	if choice.Option2.StatType == "ag" {
-		score2 -= def.Card.Agility
-	} else {
-		score2 -= def.Card.Power
-	}
-
-	// Prefer the higher-power move if thresholds are close
-	if score1 >= score2 {
-		return choice.Option1
-	}
-	return choice.Option2
-}
-
 // ─── PIN / FINISHER / DQ / COUNTOUT ─────────────────────────────────────────
-
-// resolvePIN handles a pin attempt. Defender rolls 2d6 vs their current PIN rating.
-func (m *Match) resolvePIN(pinner, pinned *WrestlerState) {
-	// If ref is down, PIN can't be counted
-	if m.refDown {
-		m.emit(newEvent(EventPin, "PIN ATTEMPT — but the referee is still down! No count!"))
-		pinned.CurrentPIN++
-		m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d from fatigue.", pinned.Card.Name, pinned.CurrentPIN))
-		m.onOffense = m.sideOf(pinner)
-		m.offLevel = 2
-		return
-	}
-
-	roll := m.rollTwo().total()
-	threshold := pinned.CurrentPIN
-
-	if roll <= threshold {
-		m.emit(pinEvent(pinned.Card.Name, roll, threshold, true))
-		// In tag matches, partner can try a pin save
-		if m.Type == MatchTag {
-			pinnedSide := m.sideOf(pinned)
-			if m.tryPinSave(pinnedSide) {
-				return // Save was successful (or ended the match via double DQ)
-			}
-		}
-		if !m.over {
-			m.endMatch(pinner, pinned, "pinfall")
-		}
-	} else {
-		m.emit(pinEvent(pinned.Card.Name, roll, threshold, false))
-		pinned.CurrentPIN++
-		m.emit(Event{
-			Type: EventFatigue,
-			Text: fmt.Sprintf("%s's PIN rating increases to %d from fatigue.", pinned.Card.Name, pinned.CurrentPIN),
-		})
-		// After kick-out, pinned wrestler gets offense at Level 3
-		m.onOffense = m.sideOf(pinned)
-		m.offLevel = 2
-	}
-}
-
-// resolveFinisher handles when a finisher move is rolled.
-func (m *Match) resolveFinisher(att, def *WrestlerState) {
-	finisher := att.Card.Finisher
-	m.emit(finisherEvent(att.Card.Name, finisher.Name))
-
-	// Handle roll finishers
-	if finisher.IsRoll {
-		fRoll := m.rollOne()
-		m.emit(newEvent(EventFinisher, "%s rolls for the finisher: %d! (needs %d-%d)",
-			att.Card.Name, fRoll, finisher.RollMin, finisher.RollMax))
-		if fRoll < finisher.RollMin || fRoll > finisher.RollMax {
-			m.emit(newEvent(EventFinisher, "The %s misses! %s dodges and takes over!", finisher.Name, def.Card.Name))
-			m.switchOffense()
-			m.offLevel = 1
-			return
-		}
-		m.emit(newEvent(EventFinisher, "The %s connects!", finisher.Name))
-	}
-
-	// Defender rolls 2d6 against their PIN + finisher rating
-	roll := m.rollTwo().total()
-	threshold := def.CurrentPIN + finisher.Rating
-
-	if m.refDown {
-		m.emit(newEvent(EventPin, "%s hits the %s — but the referee is still down! No count!", att.Card.Name, finisher.Name))
-		def.CurrentPIN++
-		m.emit(newEvent(EventFatigue, "%s's PIN rating increases to %d from fatigue.", def.Card.Name, def.CurrentPIN))
-		m.onOffense = m.sideOf(att)
-		m.offLevel = 2
-		return
-	}
-
-	if roll <= threshold {
-		m.emit(pinEvent(def.Card.Name, roll, threshold, true))
-		m.endMatch(att, def, "pinfall")
-	} else {
-		m.emit(pinEvent(def.Card.Name, roll, threshold, false))
-		def.CurrentPIN++
-		m.emit(Event{
-			Type: EventFatigue,
-			Text: fmt.Sprintf("%s's PIN rating increases to %d from fatigue.", def.Card.Name, def.CurrentPIN),
-		})
-		m.onOffense = m.sideOf(def)
-		m.offLevel = 2
-	}
-}
 
 // rollDQ rolls disqualification for a wrestler. Returns true if DQ'd (match over).
 func (m *Match) rollDQ(ws *WrestlerState) bool {

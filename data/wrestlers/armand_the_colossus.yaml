@@ -55,8 +55,8 @@ pin: 7
 pin_adv: 4
 cage: 6
 dq: 3
-agility: -3
-power: 5
+agility: 3
+power: -5
 distractor: 5
 
 finisher:

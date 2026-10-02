@@ -28,6 +28,20 @@ func (t *TextInput) Update(in Input) {
 	}
 }
 
+// updateNameList runs a text box that adds names to a list: ENTER adds the
+// typed name, and BACKSPACE on an empty box removes the last name added.
+func updateNameList(in Input, input *TextInput, names []string) []string {
+	if in.JustPressed(ebiten.KeyBackspace) && input.Text == "" && len(names) > 0 {
+		return names[:len(names)-1]
+	}
+	input.Update(in)
+	if in.JustPressed(ebiten.KeyEnter) && input.Text != "" {
+		names = append(names, input.Text)
+		input.Reset()
+	}
+	return names
+}
+
 func (t *TextInput) DisplayText() string {
 	cursor := "_"
 	if (t.blink/30)%2 == 0 {

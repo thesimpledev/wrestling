@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"wrestling/internal/engine"
@@ -23,14 +24,38 @@ const (
 	ShowComplete
 )
 
+const (
+	historyBattleRoyal = "BATTLE ROYAL"
+	historyTournament  = "TOURNAMENT"
+	showDivider        = "============================================================"
+)
+
+var leavePromptLines = []string{
+	showDivider,
+	"  LEAVE THE SHOW?",
+	showDivider,
+	"",
+	"  [C] Cancel the show: nothing from it is recorded",
+	"  [S] Skip to the results: the rest of the card is simulated",
+	"",
+	"  [ESC] Keep watching",
+}
+
 type CareerShowScreen struct {
 	fed  *engine.Federation
 	save *engine.FederationSave
 	card []engine.BookedMatch
 	mode ShowMode
 
-	currentIdx int
-	phase      ShowPhase
+	// The federation as it stood before the show, for cancelling the show,
+	// and the show's name and week, which move on when the show ends.
+	snapshot *engine.Federation
+	showName string
+	showWeek int
+
+	currentIdx    int
+	phase         ShowPhase
+	askingToLeave bool
 
 	// Match display
 	match    *engine.Match
@@ -56,134 +81,136 @@ type CareerShowScreen struct {
 	tournScreen *TournamentScreen
 	inTourn     bool
 
-	roster []*engine.WrestlerCard
+	cards map[string]*engine.WrestlerCard
 }
 
 func NewCareerShowScreen(fed *engine.Federation, save *engine.FederationSave, card []engine.BookedMatch, mode ShowMode, g *Game) *CareerShowScreen {
 	cs := &CareerShowScreen{
-		fed:     fed,
-		save:    save,
-		card:    card,
-		mode:    mode,
-		speed:   30,
-		results: []string{},
-		roster:  g.Roster,
+		fed:      fed,
+		save:     save,
+		card:     card,
+		mode:     mode,
+		showName: fed.ShowName(),
+		showWeek: fed.Week,
+		speed:    30,
+		results:  []string{},
+		cards:    make(map[string]*engine.WrestlerCard, len(g.Roster)),
 	}
+	for _, w := range g.Roster {
+		cs.cards[w.Name] = w
+	}
+	snapshot, err := fed.Clone()
+	if err != nil {
+		g.SetNotice("This show cannot be cancelled once it starts: " + err.Error())
+	}
+	cs.snapshot = snapshot
 	cs.startMatch(g)
 	return cs
 }
 
+// ─── Starting matches ───────────────────────────────────────────────────────
+
+// startMatch begins the current match on the card, passing over any that
+// cannot take place, and closes the show when the card is finished.
 func (cs *CareerShowScreen) startMatch(g *Game) {
-	if cs.currentIdx >= len(cs.card) {
-		cs.finishShow(g)
-		return
-	}
-
-	booked := cs.card[cs.currentIdx]
-
-	// Battle Royal
-	if len(booked.BREntrants) > 0 {
-		var picks []*engine.WrestlerCard
-		rosterMap := make(map[string]*engine.WrestlerCard)
-		for _, w := range g.Roster {
-			rosterMap[w.Name] = w
-		}
-		for _, name := range booked.BREntrants {
-			if w, ok := rosterMap[name]; ok {
-				picks = append(picks, w)
-			}
-		}
-		if len(picks) >= 3 {
-			cs.brScreen = NewBattleRoyalScreen(picks, g)
-			cs.brScreen.embedded = true
-			cs.brScreen.champion = cs.brScreen.wrestlers[0]
-			cs.brScreen.phase = BRShowingBracket
-			cs.inBR = true
-			cs.inTourn = false
-
-			if cs.shouldSimulate() {
-				cs.simulateBR(g)
-			}
+	for cs.currentIdx < len(cs.card) {
+		if cs.begin(g, cs.card[cs.currentIdx]) {
 			return
 		}
-	}
-
-	// Tournament
-	if booked.IsTournament {
-		rosterMap := make(map[string]*engine.WrestlerCard)
-		for _, w := range g.Roster {
-			rosterMap[w.Name] = w
-		}
-		ts := NewTournamentScreen(g)
-		ts.bracketSize = booked.TournSize
-		ts.totalRounds = 0
-		size := booked.TournSize
-		for size > 1 {
-			ts.totalRounds++
-			size /= 2
-		}
-		ts.seeds = make([]*engine.WrestlerCard, booked.TournSize)
-		for i, name := range booked.TournSeeds {
-			if i < booked.TournSize {
-				if w, ok := rosterMap[name]; ok {
-					ts.seeds[i] = w
-				}
-			}
-		}
-		ts.results = make([][]*engine.WrestlerCard, ts.totalRounds)
-		for r := 0; r < ts.totalRounds; r++ {
-			ts.results[r] = make([]*engine.WrestlerCard, booked.TournSize/(1<<(r+1)))
-		}
-		ts.buildBracketLines()
-		ts.phase = TournShowBracket
-		ts.embedded = true
-		ts.onMatchDone = func(result *engine.MatchResult) {
-			cs.fed.RecordResult(result.Winner, result.Loser, result.Method, false)
-			cs.fed.AddRivalry(result.Winner, result.Loser, 1)
-		}
-		cs.tournScreen = ts
-		cs.inTourn = true
-		cs.inBR = false
-
-		if cs.shouldSimulate() {
-			cs.simulateTournament(g)
-		}
-		return
-	}
-
-	// Standard match
-	rosterMap := make(map[string]*engine.WrestlerCard)
-	for _, w := range g.Roster {
-		rosterMap[w.Name] = w
-	}
-
-	s1Name := ""
-	s2Name := ""
-	if len(booked.Side1) > 0 {
-		s1Name = booked.Side1[0]
-	}
-	if len(booked.Side2) > 0 {
-		s2Name = booked.Side2[0]
-	}
-
-	card1, ok1 := rosterMap[s1Name]
-	card2, ok2 := rosterMap[s2Name]
-	if !ok1 || !ok2 {
-		cs.results = append(cs.results, fmt.Sprintf("%d. CANCELLED: invalid wrestlers", cs.currentIdx+1))
+		cs.results = append(cs.results, fmt.Sprintf("%d. CANCELLED: wrestlers not available", cs.currentIdx+1))
 		cs.currentIdx++
-		cs.startMatch(g)
-		return
+	}
+	cs.finishShow(g)
+}
+
+func (cs *CareerShowScreen) nextMatch(g *Game) {
+	cs.currentIdx++
+	cs.startMatch(g)
+}
+
+func (cs *CareerShowScreen) begin(g *Game, booked engine.BookedMatch) bool {
+	cs.inBR, cs.inTourn = false, false
+	switch {
+	case len(booked.BREntrants) > 0:
+		return cs.beginBattleRoyal(g, booked)
+	case booked.IsTournament:
+		return cs.beginTournament(g, booked)
+	default:
+		return cs.beginMatch(g, booked)
+	}
+}
+
+func (cs *CareerShowScreen) beginBattleRoyal(g *Game, booked engine.BookedMatch) bool {
+	var entrants []*engine.WrestlerCard
+	for _, name := range booked.BREntrants {
+		if w, ok := cs.cards[name]; ok {
+			entrants = append(entrants, w)
+		}
+	}
+	if len(entrants) < minBattleRoyalField {
+		return false
 	}
 
-	match := engine.NewMatch(card1, card2)
-	match.Type = booked.Type
-	match.InitForMatchType()
+	br := NewBattleRoyalScreen(entrants, g)
+	br.embedded = true
+	br.champion = br.wrestlers[0]
+	br.phase = BRShowingBracket
+	cs.brScreen, cs.inBR = br, true
+
+	if cs.shouldSimulate() {
+		br.runToEnd(g)
+		cs.recordBattleRoyal()
+		cs.showSummary(historyBattleRoyal)
+	}
+	return true
+}
+
+func (cs *CareerShowScreen) beginTournament(g *Game, booked engine.BookedMatch) bool {
+	if booked.TournSize < 2 {
+		return false
+	}
+	seeds := make([]*engine.WrestlerCard, booked.TournSize)
+	for i, name := range booked.TournSeeds {
+		if i < len(seeds) {
+			seeds[i] = cs.cards[name]
+		}
+	}
+
+	ts := newSeededTournament(g, seeds)
+	ts.embedded = true
+	ts.onMatchDone = cs.recordTournamentMatch
+	cs.tournScreen, cs.inTourn = ts, true
+
+	if cs.shouldSimulate() {
+		ts.runToEnd(g)
+		cs.recordTournament()
+		cs.showSummary(historyTournament)
+	}
+	return true
+}
+
+// showSummary replaces the match log with the outcome of a battle royal or
+// tournament that was simulated rather than watched.
+func (cs *CareerShowScreen) showSummary(kind string) {
+	cs.inBR, cs.inTourn = false, false
+	cs.lines = []string{
+		showDivider,
+		fmt.Sprintf("  Match %d of %d: %s", cs.currentIdx+1, len(cs.card), kind),
+		showDivider,
+		"",
+		"  " + cs.results[len(cs.results)-1],
+	}
+	cs.scroll = 0
+	cs.phase = ShowMatchResult
+}
+
+func (cs *CareerShowScreen) beginMatch(g *Game, booked engine.BookedMatch) bool {
+	match, ok := cs.buildMatch(booked)
+	if !ok {
+		return false
+	}
 	match.Rules = g.Rules
 	match.ApplyInjuries(g.Injuries.IsInjured)
-
-	if cs.fed.IsRival(s1Name, s2Name) {
-		match.IsFeud = true
-	}
 
 	cs.match = match
 	cs.events = match.Run()
@@ -191,27 +218,66 @@ func (cs *CareerShowScreen) startMatch(g *Game) {
 	cs.autoPlay = false
 	cs.ticker = 0
 	cs.scroll = 0
-	cs.inBR = false
-	cs.inTourn = false
-
-	typeStr := engine.MatchTypeString(booked.Type)
-	titleStr := ""
-	if booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships) {
-		titleStr = fmt.Sprintf(" (%s)", cs.fed.Championships[booked.TitleIndex].Name)
-	}
-
-	cs.lines = []string{
-		"============================================================",
-		fmt.Sprintf("  Match %d of %d: %s%s", cs.currentIdx+1, len(cs.card), typeStr, titleStr),
-		fmt.Sprintf("  %s  vs  %s", s1Name, s2Name),
-		"============================================================",
-		"",
-	}
-
+	cs.lines = cs.matchHeader(booked)
 	cs.phase = ShowRunning
 
 	if cs.shouldSimulate() {
 		cs.simulateCurrentMatch(g)
+	}
+	return true
+}
+
+func (cs *CareerShowScreen) cardsFor(names []string) ([]*engine.WrestlerCard, bool) {
+	found := make([]*engine.WrestlerCard, 0, len(names))
+	for _, name := range names {
+		w, ok := cs.cards[name]
+		if !ok {
+			return nil, false
+		}
+		found = append(found, w)
+	}
+	return found, len(found) > 0
+}
+
+func (cs *CareerShowScreen) buildMatch(booked engine.BookedMatch) (*engine.Match, bool) {
+	side1, ok1 := cs.cardsFor(booked.Side1)
+	side2, ok2 := cs.cardsFor(booked.Side2)
+	if !ok1 || !ok2 {
+		return nil, false
+	}
+
+	if booked.Type == engine.MatchTag {
+		if len(side1) < 2 || len(side2) < 2 {
+			return nil, false
+		}
+		match := engine.NewTagMatch(side1[0], side1[1], side2[0], side2[1])
+		match.Sides[0].RegularPartners = booked.Side1Regular
+		match.Sides[1].RegularPartners = booked.Side2Regular
+		return match, true
+	}
+
+	match := engine.NewMatch(side1[0], side2[0])
+	match.Type = booked.Type
+	match.InitForMatchType()
+	match.IsFeud = cs.fed.IsRival(side1[0].Name, side2[0].Name)
+	return match, true
+}
+
+func (cs *CareerShowScreen) titleOnTheLine(booked engine.BookedMatch) bool {
+	return booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships)
+}
+
+func (cs *CareerShowScreen) matchHeader(booked engine.BookedMatch) []string {
+	title := ""
+	if cs.titleOnTheLine(booked) {
+		title = fmt.Sprintf(" (%s)", cs.fed.Championships[booked.TitleIndex].Name)
+	}
+	return []string{
+		showDivider,
+		fmt.Sprintf("  Match %d of %d: %s%s", cs.currentIdx+1, len(cs.card), engine.MatchTypeString(booked.Type), title),
+		fmt.Sprintf("  %s  vs  %s", strings.Join(booked.Side1, " & "), strings.Join(booked.Side2, " & ")),
+		showDivider,
+		"",
 	}
 }
 
@@ -234,89 +300,45 @@ func (cs *CareerShowScreen) simulateCurrentMatch(g *Game) {
 	cs.phase = ShowMatchResult
 }
 
-func (cs *CareerShowScreen) simulateBR(g *Game) {
-	for cs.brScreen.nextIdx < len(cs.brScreen.wrestlers) {
-		cs.brScreen.startNextMatch(g)
-		cs.brScreen.finishSubMatch(g)
-	}
-	for _, eliminated := range cs.brScreen.eliminated {
-		cs.fed.RecordResult(cs.brScreen.champion.Name, eliminated, "elimination", false)
-		cs.fed.AddRivalry(cs.brScreen.champion.Name, eliminated, 1)
-	}
-	cs.cardResults = append(cs.cardResults, cs.brScreen.cardResults...)
-	cs.fed.TitleShotEarned = cs.brScreen.champion.Name
+// ─── Recording results ──────────────────────────────────────────────────────
 
-	cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, cs.brScreen.champion.Name))
-	cs.inBR = false
-	cs.currentIdx++
-	cs.phase = ShowMatchResult
+func (cs *CareerShowScreen) recordBattleRoyal() {
+	br := cs.brScreen
+	for _, result := range br.cardResults {
+		if result == nil || result.Draw() {
+			continue
+		}
+		cs.fed.RecordResult(engine.MatchHistoryEntry{
+			Winner: result.Winner, Loser: result.Loser, Method: result.Method, MatchType: historyBattleRoyal,
+		})
+		cs.fed.AddRivalry(result.Winner, result.Loser, 1)
+	}
+	cs.cardResults = append(cs.cardResults, br.cardResults...)
+	cs.fed.TitleShotEarned = br.champion.Name
+	cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, br.champion.Name))
 }
 
-func (cs *CareerShowScreen) simulateTournament(g *Game) {
-	ts := cs.tournScreen
-	for ts.currentRound < ts.totalRounds {
-		matchesInRound := ts.bracketSize / (1 << (ts.currentRound + 1))
-		for ts.currentMatch < matchesInRound {
-			w1, w2 := ts.getMatchup(ts.currentRound, ts.currentMatch)
-			if w1 == nil && w2 == nil {
-				ts.currentMatch++
-				continue
-			}
-			if w1 == nil || w2 == nil {
-				// Missing entrant — the other wrestler advances on a bye
-				winner := w1
-				if winner == nil {
-					winner = w2
-				}
-				ts.results[ts.currentRound][ts.currentMatch] = winner
-				ts.currentMatch++
-				continue
-			}
-			match := engine.NewMatch(w1, w2)
-			match.Type = engine.MatchSingles
-			match.InitForMatchType()
-			match.Rules = g.Rules
-			match.ApplyInjuries(g.Injuries.IsInjured)
-			ts.match = match
-			ts.events = match.Run()
-			ts.shown = len(ts.events)
+func (cs *CareerShowScreen) recordTournamentMatch(result *engine.MatchResult) {
+	cs.fed.RecordResult(engine.MatchHistoryEntry{
+		Winner: result.Winner, Loser: result.Loser, Method: result.Method, MatchType: historyTournament,
+	})
+	cs.fed.AddRivalry(result.Winner, result.Loser, 1)
+}
 
-			result := match.Result()
-			cs.cardResults = append(cs.cardResults, result)
-			if result != nil && !result.Draw() {
-				var winner *engine.WrestlerCard
-				if result.Winner == w1.Name {
-					winner = w1
-				} else {
-					winner = w2
-				}
-				ts.results[ts.currentRound][ts.currentMatch] = winner
-				cs.fed.RecordResult(result.Winner, result.Loser, result.Method, false)
-				cs.fed.AddRivalry(result.Winner, result.Loser, 1)
-			} else {
-				ts.results[ts.currentRound][ts.currentMatch] = w1
-			}
-			ts.currentMatch++
-		}
-		ts.currentRound++
-		ts.currentMatch = 0
-	}
+func (cs *CareerShowScreen) recordTournament() {
+	ts := cs.tournScreen
+	cs.cardResults = append(cs.cardResults, ts.cardResults...)
 
 	winner := ts.results[ts.totalRounds-1][0]
-	winnerName := "Unknown"
-	if winner != nil {
-		winnerName = winner.Name
+	if winner == nil {
+		cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] No winner", cs.currentIdx+1))
+		return
 	}
-
 	booked := cs.card[cs.currentIdx]
-	if booked.IsTitle && booked.TitleIndex >= 0 && cs.fed.ChampionOf(booked.TitleIndex) == "" {
-		cs.fed.ChangeTitleHolder(booked.TitleIndex, winnerName, "", "tournament")
+	if cs.titleOnTheLine(booked) && cs.fed.ChampionOf(booked.TitleIndex) == "" {
+		cs.fed.ChangeTitleHolder(booked.TitleIndex, winner.Name, "", "tournament")
 	}
-
-	cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] Winner: %s", cs.currentIdx+1, winnerName))
-	cs.inTourn = false
-	cs.currentIdx++
-	cs.phase = ShowMatchResult
+	cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] Winner: %s", cs.currentIdx+1, winner.Name))
 }
 
 func (cs *CareerShowScreen) processMatchResult(g *Game) {
@@ -324,154 +346,199 @@ func (cs *CareerShowScreen) processMatchResult(g *Game) {
 	booked := cs.card[cs.currentIdx]
 	cs.cardResults = append(cs.cardResults, result)
 
-	if result != nil && !result.Draw() {
-		cs.fed.RecordResult(result.Winner, result.Loser, result.Method, booked.IsTitle)
-
-		cs.fed.AddRivalry(result.Winner, result.Loser, 1)
-		if result.InjuredWrestler != "" {
-			cs.fed.AddRivalry(result.Winner, result.Loser, 2)
-		}
-		if result.FeudText != "" {
-			cs.fed.AddRivalry(result.Winner, result.Loser, 2)
-		}
-
-		// Title change
-		if booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships) {
-			champ := cs.fed.ChampionOf(booked.TitleIndex)
-			if result.Winner != champ {
-				cs.fed.ChangeTitleHolder(booked.TitleIndex, result.Winner, result.Loser, result.Method)
-			} else {
-				cs.fed.Championships[booked.TitleIndex].DefensesLeft = 4
-			}
-		}
-
-		typeStr := engine.MatchTypeString(booked.Type)
-		titleTag := ""
-		if booked.IsTitle && booked.TitleIndex >= 0 && booked.TitleIndex < len(cs.fed.Championships) {
-			titleTag = fmt.Sprintf(" [%s]", cs.fed.Championships[booked.TitleIndex].Name)
-		}
-		cs.results = append(cs.results, fmt.Sprintf("%d. [%s%s] %s def. %s by %s",
-			cs.currentIdx+1, typeStr, titleTag, result.Winner, result.Loser, result.Method))
+	if result == nil || result.Draw() {
+		cs.recordDraw(booked)
 	} else {
-		if len(booked.Side1) > 0 && len(booked.Side2) > 0 {
-			cs.fed.RecordDraw(booked.Side1[0], booked.Side2[0])
-		}
-		cs.results = append(cs.results, fmt.Sprintf("%d. DRAW", cs.currentIdx+1))
+		cs.recordWin(booked, result)
+	}
+	cs.settleTitle(booked, result)
+
+	cs.lines = append(cs.lines, "", showDivider, matchResultBanner(result), showDivider)
+	cs.scrollToBottom(g)
+}
+
+func (cs *CareerShowScreen) recordWin(booked engine.BookedMatch, result *engine.MatchResult) {
+	typeStr := engine.MatchTypeString(booked.Type)
+	cs.fed.RecordResult(engine.MatchHistoryEntry{
+		Winner: result.Winner, Loser: result.Loser, Method: result.Method,
+		MatchType: typeStr, IsTitle: cs.titleOnTheLine(booked),
+	})
+
+	cs.fed.AddRivalry(result.Winner, result.Loser, 1)
+	if result.InjuredWrestler != "" {
+		cs.fed.AddRivalry(result.Winner, result.Loser, 2)
+	}
+	if result.FeudText != "" {
+		cs.fed.AddRivalry(result.Winner, result.Loser, 2)
 	}
 
-	cs.lines = append(cs.lines, "")
-	cs.lines = append(cs.lines, "============================================================")
-	cs.lines = append(cs.lines, matchResultBanner(result))
-	cs.lines = append(cs.lines, "============================================================")
-	cs.scrollToBottom(g)
+	titleTag := ""
+	if cs.titleOnTheLine(booked) {
+		titleTag = fmt.Sprintf(" [%s]", cs.fed.Championships[booked.TitleIndex].Name)
+	}
+	cs.results = append(cs.results, fmt.Sprintf("%d. [%s%s] %s def. %s by %s",
+		cs.currentIdx+1, typeStr, titleTag, result.Winner, result.Loser, result.Method))
+}
+
+func (cs *CareerShowScreen) recordDraw(booked engine.BookedMatch) {
+	for i := 0; i < len(booked.Side1) && i < len(booked.Side2); i++ {
+		cs.fed.RecordDraw(booked.Side1[i], booked.Side2[i])
+	}
+	cs.results = append(cs.results, fmt.Sprintf("%d. DRAW", cs.currentIdx+1))
+}
+
+// settleTitle counts the match as the title's match for this PPV cycle, uses
+// up an earned title shot, and moves the title if the champion lost.
+func (cs *CareerShowScreen) settleTitle(booked engine.BookedMatch, result *engine.MatchResult) {
+	if !cs.titleOnTheLine(booked) {
+		return
+	}
+	cs.fed.RecordTitleMatch(booked.TitleIndex)
+	if booked.TitleIndex == 0 && bookedIn(booked, cs.fed.TitleShotEarned) {
+		cs.fed.TitleShotEarned = ""
+	}
+	if result == nil || result.Draw() {
+		return
+	}
+	if result.Winner != cs.fed.ChampionOf(booked.TitleIndex) {
+		cs.fed.ChangeTitleHolder(booked.TitleIndex, result.Winner, result.Loser, result.Method)
+	}
+}
+
+func bookedIn(booked engine.BookedMatch, name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, side := range [][]string{booked.Side1, booked.Side2} {
+		for _, wrestler := range side {
+			if wrestler == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (cs *CareerShowScreen) finishShow(g *Game) {
 	g.EndFightCard(cs.cardResults)
 	cs.fed.AdvanceWeek()
-
-	// Check if any champion needs to vacate (defense overdue)
-	for i := range cs.fed.Championships {
-		if cs.fed.Championships[i].DefensesLeft <= 0 && cs.fed.Championships[i].Champion != "" {
-			cs.fed.VacateTitle(i)
-		}
-	}
-
 	g.SaveFederations(cs.save)
-
 	cs.phase = ShowComplete
 }
 
+// ─── Leaving a show part way through ────────────────────────────────────────
+
+func (cs *CareerShowScreen) updateLeavePrompt(g *Game) {
+	switch {
+	case g.in.JustPressed(ebiten.KeyEscape):
+		cs.askingToLeave = false
+	case g.in.JustPressed(ebiten.KeyC):
+		cs.cancelShow(g)
+	case g.in.JustPressed(ebiten.KeyS):
+		cs.skipToResults(g)
+	}
+}
+
+// cancelShow puts the federation back as it was before the show. Nothing has
+// been saved or counted against injuries yet, so there is nothing else to undo.
+func (cs *CareerShowScreen) cancelShow(g *Game) {
+	if cs.snapshot == nil {
+		return
+	}
+	*cs.fed = *cs.snapshot
+	g.SetScreen(NewCareerBookScreen(cs.fed, cs.save, cs.card, g))
+}
+
+func (cs *CareerShowScreen) skipToResults(g *Game) {
+	cs.askingToLeave = false
+	cs.mode = ShowModeSimulate
+	cs.finishCurrent(g)
+	for cs.phase != ShowComplete && cs.currentIdx < len(cs.card) {
+		cs.nextMatch(g)
+	}
+}
+
+// finishCurrent simulates what is left of the match on screen, keeping
+// whatever part of it has already been shown.
+func (cs *CareerShowScreen) finishCurrent(g *Game) {
+	switch {
+	case cs.inBR:
+		if cs.brScreen.phase != BRFinished {
+			cs.brScreen.runToEnd(g)
+			cs.recordBattleRoyal()
+		}
+	case cs.inTourn:
+		if cs.tournScreen.phase != TournFinished {
+			cs.tournScreen.runToEnd(g)
+			cs.recordTournament()
+		}
+	case cs.phase == ShowRunning:
+		cs.simulateCurrentMatch(g)
+	}
+}
+
+// ─── Update ─────────────────────────────────────────────────────────────────
+
 func (cs *CareerShowScreen) Update(g *Game) error {
+	if cs.phase == ShowComplete {
+		if confirmPressed(g.in) || g.in.JustPressed(ebiten.KeyEscape) {
+			g.SetScreen(NewCareerScreen(cs.fed, cs.save))
+		}
+		return nil
+	}
+	if cs.askingToLeave {
+		cs.updateLeavePrompt(g)
+		return nil
+	}
 	if g.in.JustPressed(ebiten.KeyEscape) {
-		g.SetScreen(NewCareerBookScreen(cs.fed, cs.save, cs.card, g))
+		cs.askingToLeave = true
 		return nil
 	}
 
-	if cs.inBR && !cs.shouldSimulate() {
+	switch {
+	case cs.inBR:
 		return cs.updateBR(g)
-	}
-	if cs.inTourn && !cs.shouldSimulate() {
+	case cs.inTourn:
 		return cs.updateTournament(g)
-	}
-
-	switch cs.phase {
-	case ShowRunning:
+	case cs.phase == ShowRunning:
 		cs.updateRunning(g)
-	case ShowMatchResult:
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			cs.currentIdx++
-			cs.startMatch(g)
-		}
-	case ShowComplete:
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			g.SetScreen(NewCareerScreen(cs.fed, cs.save))
-		}
+	case confirmPressed(g.in):
+		cs.nextMatch(g)
 	}
-
 	return nil
 }
 
 func (cs *CareerShowScreen) updateBR(g *Game) error {
 	br := cs.brScreen
-	oldPhase := br.phase
-
+	if br.phase == BRFinished {
+		if confirmPressed(g.in) {
+			cs.nextMatch(g)
+		}
+		return nil
+	}
 	if err := br.Update(g); err != nil {
 		return err
 	}
-
-	if br.phase == BRFinished && oldPhase != BRFinished {
-		for _, eliminated := range br.eliminated {
-			cs.fed.RecordResult(br.champion.Name, eliminated, "elimination", false)
-		}
-		cs.cardResults = append(cs.cardResults, br.cardResults...)
-		cs.fed.TitleShotEarned = br.champion.Name
-		cs.results = append(cs.results, fmt.Sprintf("%d. [BATTLE ROYAL] Winner: %s", cs.currentIdx+1, br.champion.Name))
-		// Don't reuse the same key press to advance past the winner screen
-		return nil
-	}
-
 	if br.phase == BRFinished {
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			cs.inBR = false
-			cs.currentIdx++
-			cs.startMatch(g)
-		}
+		cs.recordBattleRoyal()
 	}
-
 	return nil
 }
 
 func (cs *CareerShowScreen) updateTournament(g *Game) error {
 	ts := cs.tournScreen
-	oldPhase := ts.phase
-
+	if ts.phase == TournFinished {
+		if confirmPressed(g.in) {
+			cs.nextMatch(g)
+		}
+		return nil
+	}
 	if err := ts.Update(g); err != nil {
 		return err
 	}
-
-	if ts.phase == TournFinished && oldPhase != TournFinished {
-		cs.cardResults = append(cs.cardResults, ts.cardResults...)
-		winner := ts.results[ts.totalRounds-1][0]
-		if winner != nil {
-			booked := cs.card[cs.currentIdx]
-			if booked.IsTitle && booked.TitleIndex >= 0 && cs.fed.ChampionOf(booked.TitleIndex) == "" {
-				cs.fed.ChangeTitleHolder(booked.TitleIndex, winner.Name, "", "tournament")
-			}
-			cs.results = append(cs.results, fmt.Sprintf("%d. [TOURNAMENT] Winner: %s", cs.currentIdx+1, winner.Name))
-		}
-		// Don't reuse the same key press to advance past the champion screen
-		return nil
-	}
-
 	if ts.phase == TournFinished {
-		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			cs.inTourn = false
-			cs.currentIdx++
-			cs.startMatch(g)
-		}
+		cs.recordTournament()
 	}
-
 	return nil
 }
 
@@ -525,23 +592,36 @@ func (cs *CareerShowScreen) updateRunning(g *Game) {
 	}
 }
 
+// ─── Drawing ────────────────────────────────────────────────────────────────
+
 func (cs *CareerShowScreen) Draw(screen *ebiten.Image, g *Game) {
-	if cs.inBR && !cs.shouldSimulate() {
+	switch {
+	case cs.phase == ShowComplete:
+		screen.Fill(Background)
+		drawLines(screen, cs.completeLines())
+		DrawText(screen, "[SPACE] Continue  [ESC] Federation Dashboard", Margin, g.screenH-LineHeight-Margin)
+	case cs.askingToLeave:
+		screen.Fill(Background)
+		drawLines(screen, leavePromptLines)
+	case cs.inBR:
 		cs.brScreen.Draw(screen, g)
-		return
-	}
-	if cs.inTourn && !cs.shouldSimulate() {
+	case cs.inTourn:
 		cs.tournScreen.Draw(screen, g)
-		return
+	default:
+		screen.Fill(Background)
+		cs.drawMatch(screen, g)
 	}
+}
 
-	screen.Fill(Background)
-
-	if cs.phase == ShowComplete {
-		cs.drawComplete(screen, g)
-		return
+func drawLines(screen *ebiten.Image, lines []string) {
+	y := Margin
+	for _, line := range lines {
+		DrawText(screen, line, Margin, y)
+		y += LineHeight
 	}
+}
 
+func (cs *CareerShowScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 
 	startLine := cs.scroll
@@ -557,57 +637,56 @@ func (cs *CareerShowScreen) Draw(screen *ebiten.Image, g *Game) {
 		DrawText(screen, cs.lines[i], Margin, y)
 		y += LineHeight
 	}
-
-	var status string
-	switch cs.phase {
-	case ShowRunning:
-		if cs.autoPlay {
-			status = "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Quit"
-		} else {
-			status = "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Quit"
-		}
-	case ShowMatchResult:
-		remaining := len(cs.card) - cs.currentIdx - 1
-		if remaining > 0 {
-			status = fmt.Sprintf("[SPACE] Next Match (%d remaining)  [ESC] Quit", remaining)
-		} else {
-			status = "[SPACE] Show Results  [ESC] Quit"
-		}
-	}
-	DrawText(screen, status, Margin, statusBarY)
+	DrawText(screen, cs.statusLine(), Margin, statusBarY)
 }
 
-func (cs *CareerShowScreen) drawComplete(screen *ebiten.Image, g *Game) {
-	y := Margin
-	DrawText(screen, "============================================================", Margin, y)
-	y += LineHeight
-	DrawText(screen, fmt.Sprintf("  %s: RESULTS", cs.fed.ShowName()), Margin, y)
-	y += LineHeight
-	DrawText(screen, "============================================================", Margin, y)
-	y += LineHeight * 2
+func (cs *CareerShowScreen) statusLine() string {
+	switch {
+	case cs.phase == ShowRunning && cs.autoPlay:
+		return "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Leave"
+	case cs.phase == ShowRunning:
+		return "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Leave"
+	}
+	if remaining := len(cs.card) - cs.currentIdx - 1; remaining > 0 {
+		return fmt.Sprintf("[SPACE] Next Match (%d remaining)  [ESC] Leave", remaining)
+	}
+	return "[SPACE] Show Results  [ESC] Leave"
+}
 
+// completeLines is the results screen: it names the show and week that were
+// just completed, not the ones the federation has moved on to.
+func (cs *CareerShowScreen) completeLines() []string {
+	lines := []string{showDivider, fmt.Sprintf("  %s: RESULTS", cs.showName), showDivider, ""}
 	for _, r := range cs.results {
-		DrawText(screen, "  "+r, Margin, y)
-		y += LineHeight
+		lines = append(lines, "  "+r)
 	}
-
-	y += LineHeight
-
-	// Show all championships
-	for _, ch := range cs.fed.Championships {
-		if ch.Champion == "" {
-			DrawText(screen, fmt.Sprintf("%s: VACANT", ch.Name), Margin, y)
-		} else {
-			DrawText(screen, fmt.Sprintf("%s: %s", ch.Name, ch.Champion), Margin, y)
-		}
-		y += LineHeight
+	lines = append(lines, "")
+	for i, ch := range cs.fed.Championships {
+		lines = append(lines, cs.titleLine(i, ch))
 	}
+	return append(lines, "", fmt.Sprintf("Week %d complete. Federation saved.", cs.showWeek))
+}
 
-	y += LineHeight
-	DrawText(screen, fmt.Sprintf("Week %d complete. Federation saved.", cs.fed.Week), Margin, y)
+func (cs *CareerShowScreen) titleLine(index int, ch engine.Championship) string {
+	if ch.Champion != "" {
+		return fmt.Sprintf("%s: %s", ch.Name, ch.Champion)
+	}
+	if stripped := cs.strippedOnThisShow(index); stripped != "" {
+		return fmt.Sprintf("%s: VACANT (%s stripped: no title match on this PPV)", ch.Name, stripped)
+	}
+	return fmt.Sprintf("%s: VACANT", ch.Name)
+}
 
-	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[SPACE] Continue  [ESC] Federation Dashboard", Margin, statusY)
+func (cs *CareerShowScreen) strippedOnThisShow(index int) string {
+	history := cs.fed.Championships[index].History
+	if len(history) == 0 {
+		return ""
+	}
+	last := history[len(history)-1]
+	if last.Method != "vacated" || last.Week != cs.showWeek {
+		return ""
+	}
+	return last.Loser
 }
 
 func (cs *CareerShowScreen) visibleLines(g *Game) int {

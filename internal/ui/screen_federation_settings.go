@@ -29,117 +29,138 @@ const (
 	SettingsEditPPVNames
 )
 
+const (
+	settingsTextLength = 30
+	ppvFreqLength      = 2
+	minPPVFrequency    = 2
+)
+
 type FederationSettingsScreen struct {
 	fed   *engine.Federation
 	save  *engine.FederationSave
 	field SettingsField
 	phase SettingsPhase
 
-	input *TextInput
+	input    *TextInput
+	ppvInput *TextInput
 
-	// PPV name editing
-	ppvCursor int
-	ppvInput  *TextInput
-	ppvNames  []string
+	// Edits are kept here and written to the federation only by Save &
+	// Return, so ESC leaves the federation as it was.
+	name         string
+	showName     string
+	ppvFrequency int
+	ppvNames     []string
 }
 
 func NewFederationSettingsScreen(fed *engine.Federation, save *engine.FederationSave) *FederationSettingsScreen {
 	return &FederationSettingsScreen{
-		fed:      fed,
-		save:     save,
-		input:    NewTextInput(30),
-		ppvInput: NewTextInput(30),
+		fed:          fed,
+		save:         save,
+		input:        NewTextInput(settingsTextLength),
+		ppvInput:     NewTextInput(settingsTextLength),
+		name:         fed.Name,
+		showName:     fed.WeeklyShowName,
+		ppvFrequency: fed.PPVFrequency,
+		ppvNames:     append([]string{}, fed.PPVNames...),
 	}
 }
 
 func (fs *FederationSettingsScreen) Update(g *Game) error {
 	switch fs.phase {
-	case SettingsNav:
-		if g.in.JustPressed(ebiten.KeyEscape) {
-			g.SetScreen(NewCareerScreen(fs.fed, fs.save))
-			return nil
-		}
-		fs.field = SettingsField(handleListInput(g.in, int(fs.field), settingsFieldCount))
-
-		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
-			switch fs.field {
-			case SettingsFieldName:
-				fs.input.Reset()
-				fs.input.Text = fs.fed.Name
-				fs.phase = SettingsEditing
-			case SettingsFieldShowName:
-				fs.input.Reset()
-				fs.input.Text = fs.fed.WeeklyShowName
-				fs.phase = SettingsEditing
-			case SettingsFieldPPVFreq:
-				fs.input.Reset()
-				fs.input.MaxLength = 2
-				fs.input.Text = strconv.Itoa(fs.fed.PPVFrequency)
-				fs.phase = SettingsEditing
-			case SettingsFieldPPVNames:
-				fs.ppvNames = make([]string, len(fs.fed.PPVNames))
-				copy(fs.ppvNames, fs.fed.PPVNames)
-				fs.ppvCursor = 0
-				fs.ppvInput.Reset()
-				fs.phase = SettingsEditPPVNames
-			case SettingsFieldSave:
-				g.SaveFederations(fs.save)
-				g.SetScreen(NewCareerScreen(fs.fed, fs.save))
-			}
-		}
-
 	case SettingsEditing:
-		if g.in.JustPressed(ebiten.KeyEscape) {
-			fs.phase = SettingsNav
-			fs.input.MaxLength = 30
-			return nil
-		}
-		fs.input.Update(g.in)
-		if g.in.JustPressed(ebiten.KeyEnter) && len(fs.input.Text) > 0 {
-			switch fs.field {
-			case SettingsFieldName:
-				fs.fed.Name = fs.input.Text
-			case SettingsFieldShowName:
-				fs.fed.WeeklyShowName = fs.input.Text
-			case SettingsFieldPPVFreq:
-				n, err := strconv.Atoi(fs.input.Text)
-				if err == nil && n >= 2 {
-					fs.fed.PPVFrequency = n
-				}
-			}
-			fs.phase = SettingsNav
-			fs.input.MaxLength = 30
-		}
-
+		fs.updateEditing(g)
 	case SettingsEditPPVNames:
-		if g.in.JustPressed(ebiten.KeyEscape) {
-			// Save ppv names back
-			fs.fed.PPVNames = fs.ppvNames
-			fs.phase = SettingsNav
-			return nil
-		}
-		fs.ppvInput.Update(g.in)
-		if g.in.JustPressed(ebiten.KeyEnter) && len(fs.ppvInput.Text) > 0 {
-			fs.ppvNames = append(fs.ppvNames, fs.ppvInput.Text)
-			fs.ppvInput.Reset()
-		}
-		if g.in.JustPressed(ebiten.KeyD) && len(fs.ppvNames) > 0 && len(fs.ppvInput.Text) == 0 {
-			fs.ppvNames = fs.ppvNames[:len(fs.ppvNames)-1]
-		}
+		fs.updatePPVNames(g)
+	default:
+		fs.updateNav(g)
+	}
+	return nil
+}
+
+func (fs *FederationSettingsScreen) updateNav(g *Game) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
+		g.SetScreen(NewCareerScreen(fs.fed, fs.save))
+		return
+	}
+	fs.field = SettingsField(handleListInput(g.in, int(fs.field), settingsFieldCount))
+	if !confirmPressed(g.in) {
+		return
 	}
 
-	return nil
+	switch fs.field {
+	case SettingsFieldName:
+		fs.startEditing(fs.name, settingsTextLength)
+	case SettingsFieldShowName:
+		fs.startEditing(fs.showName, settingsTextLength)
+	case SettingsFieldPPVFreq:
+		fs.startEditing(strconv.Itoa(fs.ppvFrequency), ppvFreqLength)
+	case SettingsFieldPPVNames:
+		fs.ppvInput.Reset()
+		fs.phase = SettingsEditPPVNames
+	case SettingsFieldSave:
+		fs.saveAndReturn(g)
+	}
+}
+
+func (fs *FederationSettingsScreen) startEditing(text string, maxLength int) {
+	fs.input.Reset()
+	fs.input.MaxLength = maxLength
+	fs.input.Text = text
+	fs.phase = SettingsEditing
+}
+
+func (fs *FederationSettingsScreen) saveAndReturn(g *Game) {
+	fs.fed.Name = fs.name
+	fs.fed.WeeklyShowName = fs.showName
+	fs.fed.PPVFrequency = fs.ppvFrequency
+	fs.fed.PPVNames = fs.ppvNames
+	g.SaveFederations(fs.save)
+	g.SetScreen(NewCareerScreen(fs.fed, fs.save))
+}
+
+func (fs *FederationSettingsScreen) updateEditing(g *Game) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
+		fs.phase = SettingsNav
+		return
+	}
+	fs.input.Update(g.in)
+	if !g.in.JustPressed(ebiten.KeyEnter) || fs.input.Text == "" {
+		return
+	}
+
+	switch fs.field {
+	case SettingsFieldName:
+		fs.name = fs.input.Text
+	case SettingsFieldShowName:
+		fs.showName = fs.input.Text
+	case SettingsFieldPPVFreq:
+		n, err := strconv.Atoi(fs.input.Text)
+		if err != nil || n < minPPVFrequency {
+			g.SetNotice(fmt.Sprintf("PPV frequency must be a number, %d or more.", minPPVFrequency))
+			return
+		}
+		fs.ppvFrequency = n
+	}
+	fs.phase = SettingsNav
+}
+
+func (fs *FederationSettingsScreen) updatePPVNames(g *Game) {
+	if g.in.JustPressed(ebiten.KeyEscape) {
+		fs.phase = SettingsNav
+		return
+	}
+	fs.ppvNames = updateNameList(g.in, fs.ppvInput, fs.ppvNames)
 }
 
 func (fs *FederationSettingsScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 	y := Margin
 
-	DrawText(screen, "============================================================", Margin, y)
+	DrawText(screen, showDivider, Margin, y)
 	y += LineHeight
 	DrawText(screen, fmt.Sprintf("          FEDERATION SETTINGS: %s", strings.ToUpper(fs.fed.Name)), Margin, y)
 	y += LineHeight
-	DrawText(screen, "============================================================", Margin, y)
+	DrawText(screen, showDivider, Margin, y)
 	y += LineHeight * 2
 
 	switch fs.phase {
@@ -157,10 +178,10 @@ func (fs *FederationSettingsScreen) drawNav(screen *ebiten.Image, g *Game, y int
 		label string
 		value string
 	}{
-		{"Federation Name", fs.fed.Name},
-		{"Weekly Show Name", fs.fed.WeeklyShowName},
-		{"PPV Frequency", fmt.Sprintf("Every %d weeks", fs.fed.PPVFrequency)},
-		{"PPV Names", fmt.Sprintf("%d events", len(fs.fed.PPVNames))},
+		{"Federation Name", fs.name},
+		{"Weekly Show Name", fs.showName},
+		{"PPV Frequency", fmt.Sprintf("Every %d weeks", fs.ppvFrequency)},
+		{"PPV Names", fmt.Sprintf("%d events", len(fs.ppvNames))},
 		{"Save & Return", ""},
 	}
 
@@ -178,11 +199,11 @@ func (fs *FederationSettingsScreen) drawNav(screen *ebiten.Image, g *Game, y int
 	}
 
 	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Edit  [ESC] Back (unsaved)", Margin, statusY)
+	DrawText(screen, "[UP/DOWN] Select  [ENTER] Edit  [ESC] Back without saving", Margin, statusY)
 }
 
 func (fs *FederationSettingsScreen) drawEditing(screen *ebiten.Image, g *Game, y int) {
-	labels := []string{"FEDERATION NAME", "WEEKLY SHOW NAME", "PPV FREQUENCY (weeks)"}
+	labels := []string{"FEDERATION NAME", "WEEKLY SHOW NAME", "PPV FREQUENCY (weeks, 2 or more)"}
 	idx := int(fs.field)
 	if idx < len(labels) {
 		DrawText(screen, labels[idx]+":", Margin, y)
@@ -198,13 +219,13 @@ func (fs *FederationSettingsScreen) drawPPVNames(screen *ebiten.Image, g *Game, 
 	DrawText(screen, "PPV EVENT NAMES:", Margin, y)
 	y += LineHeight * 2
 
-	for i, name := range fs.ppvNames {
-		DrawText(screen, fmt.Sprintf("  %d. %s", i+1, name), Margin, y)
+	for _, line := range numberedLines(fs.ppvNames) {
+		DrawText(screen, line, Margin, y)
 		y += LineHeight
 	}
 	y += LineHeight
 	DrawText(screen, "Add PPV: > "+fs.ppvInput.DisplayText(), Margin, y)
 
 	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[TYPE] PPV Name  [ENTER] Add  [D] Delete Last  [ESC] Save & Back", Margin, statusY)
+	DrawText(screen, "[TYPE] PPV Name  [ENTER] Add  [BACKSPACE] on an empty box removes the last  [ESC] Done", Margin, statusY)
 }

@@ -102,14 +102,7 @@ func (t *TournamentScreen) Update(g *Game) error {
 		sizes := t.availableSizes()
 		t.sizeCursor = handleListInput(g.in, t.sizeCursor, len(sizes))
 		if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
-			t.bracketSize = sizes[t.sizeCursor]
-			t.totalRounds = int(math.Log2(float64(t.bracketSize)))
-			t.seeds = make([]*engine.WrestlerCard, t.bracketSize)
-			t.results = make([][]*engine.WrestlerCard, t.totalRounds)
-			for r := 0; r < t.totalRounds; r++ {
-				matchesInRound := t.bracketSize / (1 << (r + 1))
-				t.results[r] = make([]*engine.WrestlerCard, matchesInRound)
-			}
+			t.setBracketSize(sizes[t.sizeCursor])
 			t.phase = TournFillBracket
 			t.fillCursor = 0
 			t.rosterCursor = 0
@@ -136,6 +129,42 @@ func (t *TournamentScreen) Update(g *Game) error {
 	}
 
 	return nil
+}
+
+func (t *TournamentScreen) setBracketSize(size int) {
+	t.bracketSize = size
+	t.totalRounds = int(math.Log2(float64(size)))
+	t.seeds = make([]*engine.WrestlerCard, size)
+	t.results = make([][]*engine.WrestlerCard, t.totalRounds)
+	for r := 0; r < t.totalRounds; r++ {
+		matchesInRound := size / (1 << (r + 1))
+		t.results[r] = make([]*engine.WrestlerCard, matchesInRound)
+	}
+}
+
+// newSeededTournament starts a tournament whose bracket is already filled.
+// A missing seed gives the other wrestler in that match a bye.
+func newSeededTournament(g *Game, seeds []*engine.WrestlerCard) *TournamentScreen {
+	t := NewTournamentScreen(g)
+	t.setBracketSize(len(seeds))
+	copy(t.seeds, seeds)
+	t.startBracket()
+	return t
+}
+
+// runToEnd plays out the rest of the tournament without showing it, keeping
+// the result of a match that is already under way.
+func (t *TournamentScreen) runToEnd(g *Game) {
+	for steps := 3 * t.bracketSize; steps > 0 && t.phase != TournFinished; steps-- {
+		switch t.phase {
+		case TournRunningMatch:
+			t.finishSubMatch(g)
+		case TournMatchResult:
+			t.advanceToNext(g)
+		default:
+			t.startCurrentMatch(g)
+		}
+	}
 }
 
 // availableSizes returns the bracket sizes the roster can fill without repeats.

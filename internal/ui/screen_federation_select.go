@@ -14,7 +14,10 @@ type FederationSelectScreen struct {
 }
 
 func NewFederationSelectScreen(g *Game) *FederationSelectScreen {
-	save := loader.LoadFederations(g.Store)
+	save, err := loader.LoadFederations(g.Store)
+	if err != nil {
+		g.SetNotice("Saved federations could not be read and will be replaced on the next save.")
+	}
 	if save == nil {
 		save = &engine.FederationSave{}
 	}

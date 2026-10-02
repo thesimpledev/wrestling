@@ -29,91 +29,80 @@ func NewCareerHistoryScreen(fed *engine.Federation, save *engine.FederationSave)
 }
 
 func (h *CareerHistoryScreen) buildLines() {
-	var lines []string
-	lines = append(lines, "============================================================")
+	if h.tab == HistoryTabTitle {
+		h.lines = titleHistoryLines(h.fed)
+		return
+	}
+	h.lines = matchHistoryLines(h.fed)
+}
 
-	switch h.tab {
-	case HistoryTabMatches:
-		lines = append(lines, "                    MATCH HISTORY")
-		lines = append(lines, "============================================================")
-		lines = append(lines, "")
+func clipName(name string, width int) string {
+	if len(name) > width {
+		return name[:width]
+	}
+	return name
+}
 
-		if len(h.fed.MatchHistory) == 0 {
-			lines = append(lines, "  No matches played yet.")
-		} else {
-			lines = append(lines, fmt.Sprintf(" %-5s %-20s %-5s %-20s %-10s %s",
-				"Week", "Winner", "", "Loser", "Method", ""))
-			lines = append(lines, " -----------------------------------------------------------")
-			for i := len(h.fed.MatchHistory) - 1; i >= 0; i-- {
-				m := h.fed.MatchHistory[i]
-				titleTag := ""
-				if m.IsTitle {
-					titleTag = " [T]"
-				}
-				winnerName := m.Winner
-				if len(winnerName) > 20 {
-					winnerName = winnerName[:20]
-				}
-				loserName := m.Loser
-				if len(loserName) > 20 {
-					loserName = loserName[:20]
-				}
-				lines = append(lines, fmt.Sprintf(" W%-4d %-20s def. %-20s %-10s%s",
-					m.Week, winnerName, loserName, m.Method, titleTag))
-			}
-		}
-
-	case HistoryTabTitle:
-		lines = append(lines, "                   TITLE HISTORY")
-		lines = append(lines, "============================================================")
-		lines = append(lines, "")
-
-		if len(h.fed.Championships) == 0 {
-			lines = append(lines, "  No championships configured.")
-		} else {
-			for ci, ch := range h.fed.Championships {
-				if ci > 0 {
-					lines = append(lines, "")
-					lines = append(lines, "  --------------------------------------------------")
-					lines = append(lines, "")
-				}
-				lines = append(lines, fmt.Sprintf("  %s", ch.Name))
-				lines = append(lines, "")
-
-				if ch.Champion == "" {
-					lines = append(lines, "  Status: VACANT")
-				} else {
-					lines = append(lines, fmt.Sprintf("  Current Champion: %s", ch.Champion))
-				}
-				lines = append(lines, "")
-
-				if len(ch.History) == 0 {
-					lines = append(lines, "  No title changes yet.")
-				} else {
-					lines = append(lines, fmt.Sprintf(" %-5s %-22s %-22s %s", "Week", "Winner", "Loser", "Method"))
-					lines = append(lines, " -----------------------------------------------------------")
-					for i := len(ch.History) - 1; i >= 0; i-- {
-						tc := ch.History[i]
-						winner := tc.Winner
-						if winner == "" {
-							winner = "(vacated)"
-						}
-						if len(winner) > 22 {
-							winner = winner[:22]
-						}
-						loser := tc.Loser
-						if len(loser) > 22 {
-							loser = loser[:22]
-						}
-						lines = append(lines, fmt.Sprintf(" W%-4d %-22s %-22s %s",
-							tc.Week, winner, loser, tc.Method))
-					}
-				}
-			}
-		}
+// matchHistoryLines lists the federation's matches, newest first.
+func matchHistoryLines(fed *engine.Federation) []string {
+	lines := []string{showDivider, "                    MATCH HISTORY", showDivider, ""}
+	if len(fed.MatchHistory) == 0 {
+		return append(lines, "  No matches played yet.")
 	}
 
-	h.lines = lines
+	lines = append(lines,
+		fmt.Sprintf(" %-5s %-20s %-5s %-20s %-10s %s", "Week", "Winner", "", "Loser", "Method", "Match"),
+		" ----------------------------------------------------------------------------")
+	for i := len(fed.MatchHistory) - 1; i >= 0; i-- {
+		m := fed.MatchHistory[i]
+		titleTag := ""
+		if m.IsTitle {
+			titleTag = " [T]"
+		}
+		lines = append(lines, fmt.Sprintf(" W%-4d %-20s def. %-20s %-10s %s%s",
+			m.Week, clipName(m.Winner, 20), clipName(m.Loser, 20), m.Method, m.MatchType, titleTag))
+	}
+	return lines
+}
+
+// titleHistoryLines lists every championship with its changes, newest first.
+func titleHistoryLines(fed *engine.Federation) []string {
+	lines := []string{showDivider, "                   TITLE HISTORY", showDivider, ""}
+	if len(fed.Championships) == 0 {
+		return append(lines, "  No championships configured.")
+	}
+	for i, ch := range fed.Championships {
+		if i > 0 {
+			lines = append(lines, "", "  --------------------------------------------------", "")
+		}
+		lines = append(lines, championshipLines(ch)...)
+	}
+	return lines
+}
+
+func championshipLines(ch engine.Championship) []string {
+	status := "  Status: VACANT"
+	if ch.Champion != "" {
+		status = fmt.Sprintf("  Current Champion: %s", ch.Champion)
+	}
+	lines := []string{fmt.Sprintf("  %s", ch.Name), "", status, ""}
+	if len(ch.History) == 0 {
+		return append(lines, "  No title changes yet.")
+	}
+
+	lines = append(lines,
+		fmt.Sprintf(" %-5s %-22s %-22s %s", "Week", "Winner", "Loser", "Method"),
+		" -----------------------------------------------------------")
+	for i := len(ch.History) - 1; i >= 0; i-- {
+		tc := ch.History[i]
+		winner := tc.Winner
+		if winner == "" {
+			winner = "(vacated)"
+		}
+		lines = append(lines, fmt.Sprintf(" W%-4d %-22s %-22s %s",
+			tc.Week, clipName(winner, 22), clipName(tc.Loser, 22), tc.Method))
+	}
+	return lines
 }
 
 func (h *CareerHistoryScreen) Update(g *Game) error {

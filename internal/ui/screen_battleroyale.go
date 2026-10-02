@@ -83,11 +83,7 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 
 	case BRMatchResult:
 		if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-			if b.nextIdx >= len(b.wrestlers) {
-				b.phase = BRFinished
-			} else {
-				b.phase = BRShowingBracket
-			}
+			b.leaveMatchResult()
 		}
 
 	case BRFinished:
@@ -97,6 +93,32 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 	}
 
 	return nil
+}
+
+func (b *BattleRoyalScreen) leaveMatchResult() {
+	if b.nextIdx >= len(b.wrestlers) {
+		b.phase = BRFinished
+		return
+	}
+	b.phase = BRShowingBracket
+}
+
+// runToEnd plays out the rest of the battle royal without showing it,
+// keeping the result of a round that is already under way.
+func (b *BattleRoyalScreen) runToEnd(g *Game) {
+	if b.champion == nil {
+		b.champion = b.wrestlers[0]
+	}
+	for steps := 3 * len(b.wrestlers); steps > 0 && b.phase != BRFinished; steps-- {
+		switch b.phase {
+		case BRRunningMatch:
+			b.finishSubMatch(g)
+		case BRMatchResult:
+			b.leaveMatchResult()
+		default:
+			b.startNextMatch(g)
+		}
+	}
 }
 
 func (b *BattleRoyalScreen) startNextMatch(g *Game) {

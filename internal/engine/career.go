@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"math/rand"
+	"encoding/json"
 	"sort"
 )
 
@@ -26,10 +26,14 @@ type TitleChange struct {
 }
 
 type Championship struct {
-	Name         string        `json:"name"`
-	Champion     string        `json:"champion"`      // "" if vacant
-	DefensesLeft int           `json:"defenses_left"` // weeks until mandatory defense
-	History      []TitleChange `json:"history"`
+	Name     string `json:"name"`
+	Champion string `json:"champion"` // "" if vacant
+
+	// ContestedSincePPV is set by a title match and cleared when a PPV ends.
+	// A champion who reaches the end of a PPV without it is stripped.
+	ContestedSincePPV bool `json:"contested_since_ppv"`
+
+	History []TitleChange `json:"history"`
 }
 
 type MatchHistoryEntry struct {
@@ -52,6 +56,10 @@ type BookedMatch struct {
 	IsTournament bool      `json:"is_tournament"`
 	TournSize    int       `json:"tourn_size"`
 	TournSeeds   []string  `json:"tourn_seeds"`
+
+	// Tag matches only: whether each side is a regular tag team.
+	Side1Regular bool `json:"side1_regular"`
+	Side2Regular bool `json:"side2_regular"`
 }
 
 // Federation holds the entire career state for one federation.
@@ -122,11 +130,7 @@ func NewFederation(cfg FederationConfig) *Federation {
 
 	champs := make([]Championship, len(cfg.ChampNames))
 	for i, cn := range cfg.ChampNames {
-		champs[i] = Championship{
-			Name:         cn,
-			Champion:     "",
-			DefensesLeft: 4,
-		}
+		champs[i] = Championship{Name: cn}
 	}
 
 	roster := make([]string, len(cfg.RosterNames))
@@ -285,19 +289,22 @@ func (c *Federation) ActiveRivals() [][2]string {
 
 // ─── RECORD UPDATES ─────────────────────────────────────────────────────────
 
-// RecordResult updates win/loss records after a match.
-func (c *Federation) RecordResult(winner, loser, method string, isTitle bool) {
-	c.ensureRecord(winner)
-	c.ensureRecord(loser)
+const matchHistoryLimit = 100
 
-	wr := c.Records[winner]
+// RecordResult updates the win and loss records after a match and adds the
+// match to the history under the current week.
+func (c *Federation) RecordResult(entry MatchHistoryEntry) {
+	c.ensureRecord(entry.Winner)
+	c.ensureRecord(entry.Loser)
+
+	wr := c.Records[entry.Winner]
 	wr.Wins++
 	if wr.CurrentStreak > 0 {
 		wr.CurrentStreak++
 	} else {
 		wr.CurrentStreak = 1
 	}
-	switch method {
+	switch entry.Method {
 	case "pinfall":
 		wr.WinsByPin++
 	case "dq":
@@ -306,7 +313,7 @@ func (c *Federation) RecordResult(winner, loser, method string, isTitle bool) {
 		wr.WinsByCountout++
 	}
 
-	lr := c.Records[loser]
+	lr := c.Records[entry.Loser]
 	lr.Losses++
 	if lr.CurrentStreak < 0 {
 		lr.CurrentStreak--
@@ -314,17 +321,10 @@ func (c *Federation) RecordResult(winner, loser, method string, isTitle bool) {
 		lr.CurrentStreak = -1
 	}
 
-	// Add to match history (keep last 100)
-	entry := MatchHistoryEntry{
-		Week:    c.Week,
-		Winner:  winner,
-		Loser:   loser,
-		Method:  method,
-		IsTitle: isTitle,
-	}
+	entry.Week = c.Week
 	c.MatchHistory = append(c.MatchHistory, entry)
-	if len(c.MatchHistory) > 100 {
-		c.MatchHistory = c.MatchHistory[len(c.MatchHistory)-100:]
+	if len(c.MatchHistory) > matchHistoryLimit {
+		c.MatchHistory = c.MatchHistory[len(c.MatchHistory)-matchHistoryLimit:]
 	}
 }
 
@@ -383,7 +383,7 @@ func (c *Federation) ChangeTitleHolder(champIdx int, winner, loser, method strin
 	}
 	ch := &c.Championships[champIdx]
 	ch.Champion = winner
-	ch.DefensesLeft = 4
+	ch.ContestedSincePPV = true
 	ch.History = append(ch.History, TitleChange{
 		Week:   c.Week,
 		Winner: winner,
@@ -407,255 +407,67 @@ func (c *Federation) VacateTitle(champIdx int) {
 		Method: "vacated",
 	})
 	ch.Champion = ""
-	ch.DefensesLeft = 4
+}
+
+// RecordTitleMatch notes that the championship was on the line in a match,
+// which is what a champion needs by the end of each PPV to keep the title.
+func (c *Federation) RecordTitleMatch(champIdx int) {
+	if champIdx < 0 || champIdx >= len(c.Championships) {
+		return
+	}
+	c.Championships[champIdx].ContestedSincePPV = true
+}
+
+// HoldsTitle reports whether the wrestler is the champion of any title.
+func (c *Federation) HoldsTitle(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, ch := range c.Championships {
+		if ch.Champion == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── WEEK ADVANCE ───────────────────────────────────────────────────────────
 
-// AdvanceWeek increments the week counter and handles PPV rotation.
+// AdvanceWeek closes the current week's show and moves to the next week.
 func (c *Federation) AdvanceWeek() {
-	c.Week++
-	for i := range c.Championships {
-		c.Championships[i].DefensesLeft--
+	if c.IsPPV() {
+		c.closePPV()
 	}
-	// On PPV weeks, decay rivalries and advance PPV name
+	c.Week++
 	if c.IsPPV() {
 		c.DecayRivalries()
-		c.PPVIndex++
 	}
 }
 
-// ─── AUTO-BOOKING ───────────────────────────────────────────────────────────
-
-// AutoBook generates a fight card for the current week.
-func (c *Federation) AutoBook(roster []*WrestlerCard) []BookedMatch {
-	var card []BookedMatch
-	used := make(map[string]bool)
-	isPPV := c.IsPPV()
-
-	maxMatches := 4
-	if isPPV {
-		maxMatches = 6
+// closePPV strips every champion whose title was not on the line since the
+// last PPV, then starts a new cycle with the next PPV name.
+func (c *Federation) closePPV() {
+	for i := range c.Championships {
+		ch := &c.Championships[i]
+		if ch.Champion != "" && !ch.ContestedSincePPV {
+			c.VacateTitle(i)
+		}
+		ch.ContestedSincePPV = false
 	}
-
-	// On PPV: book secondary title defenses first (indices 1..N)
-	if isPPV {
-		for i := 1; i < len(c.Championships); i++ {
-			if len(card) >= maxMatches-1 { // Reserve slot for main event
-				break
-			}
-			champ := c.ChampionOf(i)
-			if champ != "" {
-				contender := c.topContenderExcluding(champ, used)
-				if contender != "" {
-					card = append(card, BookedMatch{
-						Type:       MatchSingles,
-						IsTitle:    true,
-						TitleIndex: i,
-						Side1:      []string{champ},
-						Side2:      []string{contender},
-					})
-					used[champ] = true
-					used[contender] = true
-				}
-			} else {
-				// Vacant secondary title: book top 2 ranked
-				w1 := c.topContenderExcluding("", used)
-				if w1 != "" {
-					used[w1] = true
-					w2 := c.topContenderExcluding("", used)
-					if w2 != "" {
-						card = append(card, BookedMatch{
-							Type:       MatchSingles,
-							IsTitle:    true,
-							TitleIndex: i,
-							Side1:      []string{w1},
-							Side2:      []string{w2},
-						})
-						used[w2] = true
-					} else {
-						delete(used, w1)
-					}
-				}
-			}
-		}
-	}
-
-	// Book rivalry matches
-	for _, pair := range c.ActiveRivals() {
-		if len(card) >= maxMatches-1 { // Reserve slot for main event
-			break
-		}
-		if used[pair[0]] || used[pair[1]] {
-			continue
-		}
-		matchType := MatchSingles
-		score := c.RivalryScore(pair[0], pair[1])
-		if score >= 5 {
-			matchType = MatchNoDQ
-		}
-		card = append(card, BookedMatch{
-			Type:       matchType,
-			TitleIndex: -1,
-			Side1:      []string{pair[0]},
-			Side2:      []string{pair[1]},
-		})
-		used[pair[0]] = true
-		used[pair[1]] = true
-	}
-
-	// PPV battle royal with unused wrestlers
-	if isPPV && len(card) < maxMatches-1 {
-		var brEntrants []string
-		for _, w := range roster {
-			if !used[w.Name] {
-				brEntrants = append(brEntrants, w.Name)
-			}
-		}
-		if len(brEntrants) >= 4 {
-			if len(brEntrants) > 8 {
-				rand.Shuffle(len(brEntrants), func(i, j int) { // #nosec G404 -- battle royal entrant pick, not security-sensitive
-					brEntrants[i], brEntrants[j] = brEntrants[j], brEntrants[i]
-				})
-				brEntrants = brEntrants[:8]
-			}
-			card = append(card, BookedMatch{
-				Type:       MatchSingles,
-				TitleIndex: -1,
-				BREntrants: brEntrants,
-			})
-			for _, name := range brEntrants {
-				used[name] = true
-			}
-		}
-	}
-
-	// Fill remaining with singles matches
-	var available []string
-	for _, w := range roster {
-		if !used[w.Name] {
-			available = append(available, w.Name)
-		}
-	}
-	rand.Shuffle(len(available), func(i, j int) { // #nosec G404 -- match booking order, not security-sensitive
-		available[i], available[j] = available[j], available[i]
-	})
-	for i := 0; i+1 < len(available) && len(card) < maxMatches-1; i += 2 {
-		card = append(card, BookedMatch{
-			Type:       MatchSingles,
-			TitleIndex: -1,
-			Side1:      []string{available[i]},
-			Side2:      []string{available[i+1]},
-		})
-	}
-
-	// Main event: main title (index 0) defense or tournament — always last
-	if isPPV {
-		mainChamp := c.MainChampion()
-		if mainChamp != "" {
-			contender := c.TitleShotEarned
-			if contender == "" || contender == mainChamp {
-				contender = c.topContenderExcluding(mainChamp, used)
-			}
-			c.TitleShotEarned = ""
-			if contender != "" {
-				matchType := MatchSingles
-				if c.RivalryScore(mainChamp, contender) >= 5 {
-					matchType = MatchCage
-				}
-				card = append(card, BookedMatch{
-					Type:       matchType,
-					IsTitle:    true,
-					TitleIndex: 0,
-					Side1:      []string{mainChamp},
-					Side2:      []string{contender},
-				})
-			}
-		} else {
-			// Vacant main title → tournament
-			size := 4
-			if len(roster) >= 8 {
-				size = 8
-			}
-			seeds := c.pickTournamentSeeds(roster, size, used)
-			if len(seeds) == size {
-				names := make([]string, size)
-				for i, w := range seeds {
-					names[i] = w.Name
-				}
-				card = append(card, BookedMatch{
-					IsTournament: true,
-					TournSize:    size,
-					TournSeeds:   names,
-					IsTitle:      true,
-					TitleIndex:   0,
-				})
-			}
-		}
-	}
-
-	return card
+	c.PPVIndex++
 }
 
-// topContenderExcluding returns the top-ranked wrestler who isn't excluded and isn't in the used map.
-func (c *Federation) topContenderExcluding(exclude string, used map[string]bool) string {
-	for _, name := range c.RankedWrestlers() {
-		if name != exclude && !used[name] {
-			return name
-		}
+// Clone returns a copy of the federation that shares nothing with it.
+func (c *Federation) Clone() (*Federation, error) {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return nil, err
 	}
-	// Fall back to any roster member
-	for _, name := range c.Roster {
-		if name != exclude && !used[name] {
-			return name
-		}
+	var clone Federation
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return nil, err
 	}
-	return ""
-}
-
-func (c *Federation) pickTournamentSeeds(roster []*WrestlerCard, size int, used map[string]bool) []*WrestlerCard {
-	ranked := c.RankedWrestlers()
-	var seeds []*WrestlerCard
-	rosterMap := make(map[string]*WrestlerCard, len(roster))
-	for _, w := range roster {
-		rosterMap[w.Name] = w
-	}
-
-	for _, name := range ranked {
-		if len(seeds) >= size {
-			break
-		}
-		if used[name] {
-			continue
-		}
-		if w, ok := rosterMap[name]; ok {
-			seeds = append(seeds, w)
-		}
-	}
-
-	if len(seeds) < size {
-		var remaining []*WrestlerCard
-		seedSet := make(map[string]bool)
-		for _, s := range seeds {
-			seedSet[s.Name] = true
-		}
-		for _, w := range roster {
-			if !seedSet[w.Name] && !used[w.Name] {
-				remaining = append(remaining, w)
-			}
-		}
-		rand.Shuffle(len(remaining), func(i, j int) { // #nosec G404 -- tournament seed fill order, not security-sensitive
-			remaining[i], remaining[j] = remaining[j], remaining[i]
-		})
-		for _, w := range remaining {
-			if len(seeds) >= size {
-				break
-			}
-			seeds = append(seeds, w)
-		}
-	}
-
-	return seeds
+	return &clone, nil
 }
 
 // MatchTypeString returns a display string for a match type.

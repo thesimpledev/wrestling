@@ -48,7 +48,7 @@ func (cs *CareerScreen) Update(g *Game) error {
 		fedRoster := FilterRoster(g.Roster, cs.fed.Roster)
 		switch CareerMenuOption(cs.cursor) {
 		case CareerOptNextShow:
-			card := cs.fed.AutoBook(fedRoster)
+			card := cs.fed.AutoBook(bookableRoster(g, fedRoster))
 			g.SetScreen(NewCareerBookScreen(cs.fed, cs.save, card, g))
 		case CareerOptStandings:
 			g.SetScreen(NewCareerStandingsScreen(cs.fed, cs.save))
@@ -89,11 +89,7 @@ func (cs *CareerScreen) Draw(screen *ebiten.Image, g *Game) {
 		if ch.Champion == "" {
 			DrawText(screen, fmt.Sprintf("%s: VACANT", ch.Name), Margin, y)
 		} else {
-			injured := ""
-			if g.Injuries.IsInjured(ch.Champion) {
-				injured = fmt.Sprintf(" [INJURED %d]", g.Injuries.InjuryCards(ch.Champion))
-			}
-			DrawText(screen, fmt.Sprintf("%s: %s%s", ch.Name, ch.Champion, injured), Margin, y)
+			DrawText(screen, fmt.Sprintf("%s: %s%s", ch.Name, ch.Champion, statusMarkers(g, ch.Champion)), Margin, y)
 		}
 		y += LineHeight
 	}

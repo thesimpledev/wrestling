@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"wrestling/internal/engine"
@@ -11,10 +12,9 @@ type BookPhase int
 
 const (
 	BookViewCard BookPhase = iota
-	BookEditMatch
 	BookEditType
-	BookEditSide1
-	BookEditSide2
+	BookEditWrestlers
+	BookEditPartners
 )
 
 type CareerBookScreen struct {
@@ -23,11 +23,15 @@ type CareerBookScreen struct {
 	card   []engine.BookedMatch
 	cursor int
 	phase  BookPhase
+	roster []*engine.WrestlerCard
 
-	// Edit state
-	editIdx    int
-	editCursor int
-	roster     []*engine.WrestlerCard
+	// The edit in progress. Nothing is written to the card until every
+	// question has been answered, so ESC leaves the match as it was.
+	editIdx     int
+	editCursor  int
+	editType    engine.MatchType
+	editPicks   []string
+	editRegular []bool
 }
 
 func NewCareerBookScreen(fed *engine.Federation, save *engine.FederationSave, card []engine.BookedMatch, g *Game) *CareerBookScreen {
@@ -37,6 +41,47 @@ func NewCareerBookScreen(fed *engine.Federation, save *engine.FederationSave, ca
 		card:   card,
 		roster: FilterRoster(g.Roster, fed.Roster),
 	}
+}
+
+// bookableRoster leaves out suspended wrestlers, who cannot be booked.
+func bookableRoster(g *Game, roster []*engine.WrestlerCard) []*engine.WrestlerCard {
+	bookable := make([]*engine.WrestlerCard, 0, len(roster))
+	for _, w := range roster {
+		if !g.Injuries.IsSuspended(w.Name) {
+			bookable = append(bookable, w)
+		}
+	}
+	return bookable
+}
+
+var showActions = []struct {
+	label string
+	mode  ShowMode
+}{
+	{"Watch All Matches", ShowModeWatch},
+	{"Simulate All Matches", ShowModeSimulate},
+	{"Watch Main Event Only", ShowModeMainEvent},
+}
+
+var editableTypes = []engine.MatchType{
+	engine.MatchSingles,
+	engine.MatchTag,
+	engine.MatchCage,
+	engine.MatchNoDQ,
+}
+
+var editableTypeNames = []string{
+	"Singles",
+	"Tag Team",
+	"Cage",
+	"No DQ",
+}
+
+func wrestlersNeeded(matchType engine.MatchType) int {
+	if matchType == engine.MatchTag {
+		return 4
+	}
+	return 2
 }
 
 func (bs *CareerBookScreen) Update(g *Game) error {
@@ -54,241 +99,294 @@ func (bs *CareerBookScreen) Update(g *Game) error {
 		bs.updateViewCard(g)
 	case BookEditType:
 		bs.updateEditType(g)
-	case BookEditSide1:
-		bs.updateEditSide(g, 0)
-	case BookEditSide2:
-		bs.updateEditSide(g, 1)
+	case BookEditWrestlers:
+		bs.updateEditWrestlers(g)
+	case BookEditPartners:
+		bs.updateEditPartners(g)
 	}
-
 	return nil
 }
 
 func (bs *CareerBookScreen) updateViewCard(g *Game) {
-	// Extra options: Watch All, Simulate All, Watch Main Event
-	totalItems := len(bs.card) + 3
-	bs.cursor = handleListInput(g.in, bs.cursor, totalItems)
-
-	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
-		if bs.cursor < len(bs.card) {
-			// Edit this match
-			bs.editIdx = bs.cursor
-			bs.editCursor = 0
-			bs.phase = BookEditType
-		} else {
-			actionIdx := bs.cursor - len(bs.card)
-			switch actionIdx {
-			case 0: // Watch All
-				g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, ShowModeWatch, g))
-			case 1: // Simulate All
-				g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, ShowModeSimulate, g))
-			case 2: // Watch Main Event Only
-				g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, ShowModeMainEvent, g))
-			}
-		}
+	bs.cursor = handleListInput(g.in, bs.cursor, len(bs.card)+len(showActions))
+	if !confirmPressed(g.in) {
+		return
 	}
-}
+	if bs.cursor >= len(bs.card) {
+		mode := showActions[bs.cursor-len(bs.card)].mode
+		g.SetScreen(NewCareerShowScreen(bs.fed, bs.save, bs.card, mode, g))
+		return
+	}
 
-var editableTypes = []engine.MatchType{
-	engine.MatchSingles,
-	engine.MatchTag,
-	engine.MatchCage,
-	engine.MatchNoDQ,
-}
-
-var editableTypeNames = []string{
-	"Singles",
-	"Tag Team",
-	"Cage",
-	"No DQ",
+	match := bs.card[bs.cursor]
+	if len(match.BREntrants) > 0 || match.IsTournament {
+		g.SetNotice("Battle royals and tournaments cannot be edited.")
+		return
+	}
+	bs.editIdx = bs.cursor
+	bs.editCursor = 0
+	bs.phase = BookEditType
 }
 
 func (bs *CareerBookScreen) updateEditType(g *Game) {
 	bs.editCursor = handleListInput(g.in, bs.editCursor, len(editableTypes))
-	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
-		match := &bs.card[bs.editIdx]
-		match.Type = editableTypes[bs.editCursor]
-		if match.Type == engine.MatchTag {
-			if len(match.Side1) < 2 {
-				match.Side1 = append(match.Side1, "")
-			}
-			if len(match.Side2) < 2 {
-				match.Side2 = append(match.Side2, "")
-			}
-		} else {
-			if len(match.Side1) > 1 {
-				match.Side1 = match.Side1[:1]
-			}
-			if len(match.Side2) > 1 {
-				match.Side2 = match.Side2[:1]
-			}
-		}
+	if !confirmPressed(g.in) {
+		return
+	}
+	bs.editPicks = nil
+	bs.editRegular = nil
+
+	chosen := editableTypes[bs.editCursor]
+	if free := bs.freeCount(g); free < wrestlersNeeded(chosen) {
+		g.SetNotice(fmt.Sprintf("Only %d wrestlers are free for this match: a %s match needs %d.",
+			free, editableTypeNames[bs.editCursor], wrestlersNeeded(chosen)))
+		return
+	}
+	bs.editType = chosen
+	bs.editCursor = bs.firstFree(g)
+	bs.phase = BookEditWrestlers
+}
+
+func (bs *CareerBookScreen) updateEditWrestlers(g *Game) {
+	bs.editCursor = handleListInput(g.in, bs.editCursor, len(bs.roster))
+	if !confirmPressed(g.in) {
+		return
+	}
+	name := bs.roster[bs.editCursor].Name
+	if bs.blockedReason(g, name) != "" {
+		return
+	}
+	bs.editPicks = append(bs.editPicks, name)
+
+	switch {
+	case len(bs.editPicks) < wrestlersNeeded(bs.editType):
+		bs.editCursor = bs.firstFree(g)
+	case bs.editType == engine.MatchTag:
 		bs.editCursor = 0
-		bs.phase = BookEditSide1
+		bs.phase = BookEditPartners
+	default:
+		bs.applyEdit(g)
 	}
 }
 
-func (bs *CareerBookScreen) updateEditSide(g *Game, sideIdx int) {
-	bs.editCursor = handleListInput(g.in, bs.editCursor, len(bs.roster))
-	if g.in.JustPressed(ebiten.KeyEnter) || g.in.JustPressed(ebiten.KeySpace) {
-		match := &bs.card[bs.editIdx]
-		name := bs.roster[bs.editCursor].Name
-		if sideIdx == 0 {
-			if len(match.Side1) > 0 {
-				match.Side1[0] = name
-			} else {
-				match.Side1 = []string{name}
-			}
-			bs.editCursor = 0
-			bs.phase = BookEditSide2
-		} else {
-			if len(match.Side2) > 0 {
-				match.Side2[0] = name
-			} else {
-				match.Side2 = []string{name}
-			}
-			bs.phase = BookViewCard
-		}
+func (bs *CareerBookScreen) updateEditPartners(g *Game) {
+	bs.editCursor = handleListInput(g.in, bs.editCursor, len(regularPartnerChoices))
+	if !confirmPressed(g.in) {
+		return
+	}
+	bs.editRegular = append(bs.editRegular, bs.editCursor == answerRegular)
+	bs.editCursor = 0
+	if len(bs.editRegular) == 2 {
+		bs.applyEdit(g)
 	}
 }
+
+// bookedElsewhere returns the number of another match on the card that the
+// wrestler is already in, or 0.
+func (bs *CareerBookScreen) bookedElsewhere(name string) int {
+	for i, match := range bs.card {
+		if i == bs.editIdx {
+			continue
+		}
+		for _, names := range [][]string{match.Side1, match.Side2, match.BREntrants, match.TournSeeds} {
+			for _, booked := range names {
+				if booked == name {
+					return i + 1
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// blockedReason says why a wrestler cannot be picked for the match being
+// edited, or returns "" when he can.
+func (bs *CareerBookScreen) blockedReason(g *Game, name string) string {
+	for _, picked := range bs.editPicks {
+		if picked == name {
+			return "already in this match"
+		}
+	}
+	if g.Injuries.IsSuspended(name) {
+		return "suspended"
+	}
+	if other := bs.bookedElsewhere(name); other > 0 {
+		return fmt.Sprintf("booked in match %d", other)
+	}
+	return ""
+}
+
+func (bs *CareerBookScreen) freeCount(g *Game) int {
+	count := 0
+	for _, w := range bs.roster {
+		if bs.blockedReason(g, w.Name) == "" {
+			count++
+		}
+	}
+	return count
+}
+
+func (bs *CareerBookScreen) firstFree(g *Game) int {
+	for i, w := range bs.roster {
+		if bs.blockedReason(g, w.Name) == "" {
+			return i
+		}
+	}
+	return 0
+}
+
+func (bs *CareerBookScreen) applyEdit(g *Game) {
+	match := &bs.card[bs.editIdx]
+	half := len(bs.editPicks) / 2
+	match.Type = bs.editType
+	match.Side1 = append([]string{}, bs.editPicks[:half]...)
+	match.Side2 = append([]string{}, bs.editPicks[half:]...)
+	match.Side1Regular = len(bs.editRegular) == 2 && bs.editRegular[0]
+	match.Side2Regular = len(bs.editRegular) == 2 && bs.editRegular[1]
+
+	if match.IsTitle && !bs.titleStillOnTheLine(*match) {
+		match.IsTitle = false
+		match.TitleIndex = -1
+		g.SetNotice(fmt.Sprintf("Match %d is no longer a title match: the champion has to be in it, one on one.", bs.editIdx+1))
+	}
+	bs.phase = BookViewCard
+}
+
+func (bs *CareerBookScreen) titleStillOnTheLine(match engine.BookedMatch) bool {
+	if match.Type == engine.MatchTag {
+		return false
+	}
+	champion := bs.fed.ChampionOf(match.TitleIndex)
+	return champion == "" || bookedIn(match, champion)
+}
+
+// ─── Drawing ────────────────────────────────────────────────────────────────
 
 func (bs *CareerBookScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 	y := Margin
 
-	DrawText(screen, "============================================================", Margin, y)
+	DrawText(screen, showDivider, Margin, y)
 	y += LineHeight
 	title := fmt.Sprintf("  Week %d - %s", bs.fed.Week, bs.fed.ShowName())
 	DrawText(screen, title, Margin, y)
 	y += LineHeight
-	DrawText(screen, "============================================================", Margin, y)
+	DrawText(screen, showDivider, Margin, y)
 	y += LineHeight * 2
 
-	switch bs.phase {
-	case BookViewCard:
-		bs.drawCard(screen, g, y)
-	case BookEditType:
-		bs.drawEditType(screen, g, y)
-	case BookEditSide1:
-		bs.drawEditSide(screen, g, y, "WRESTLER 1 (Side 1)")
-	case BookEditSide2:
-		bs.drawEditSide(screen, g, y, "WRESTLER 2 (Side 2)")
-	}
-}
-
-func (bs *CareerBookScreen) drawCard(screen *ebiten.Image, g *Game, y int) {
-	DrawText(screen, "FIGHT CARD:", Margin, y)
-	y += LineHeight * 2
-
-	for i, m := range bs.card {
-		prefix := "  "
-		if i == bs.cursor {
-			prefix = "> "
-		}
-
-		var line string
-		if len(m.BREntrants) > 0 {
-			line = fmt.Sprintf("[BATTLE ROYAL] %d-man Battle Royal", len(m.BREntrants))
-		} else if m.IsTournament {
-			titleTag := ""
-			if m.IsTitle && m.TitleIndex >= 0 && m.TitleIndex < len(bs.fed.Championships) {
-				titleTag = bs.fed.Championships[m.TitleIndex].Name + " "
-			}
-			line = fmt.Sprintf("[%sTOURNAMENT] %d-man Tournament", titleTag, m.TournSize)
-		} else {
-			typeStr := engine.MatchTypeString(m.Type)
-			titleTag := ""
-			if m.IsTitle && m.TitleIndex >= 0 && m.TitleIndex < len(bs.fed.Championships) {
-				titleTag = bs.fed.Championships[m.TitleIndex].Name + " - "
-			}
-			s1 := "TBD"
-			if len(m.Side1) > 0 && m.Side1[0] != "" {
-				s1 = m.Side1[0]
-				if g.Injuries.IsInjured(s1) {
-					s1 += "*"
-				}
-			}
-			s2 := "TBD"
-			if len(m.Side2) > 0 && m.Side2[0] != "" {
-				s2 = m.Side2[0]
-				if g.Injuries.IsInjured(s2) {
-					s2 += "*"
-				}
-			}
-			// Mark champion
-			if m.IsTitle && m.TitleIndex >= 0 && m.TitleIndex < len(bs.fed.Championships) {
-				champ := bs.fed.ChampionOf(m.TitleIndex)
-				if len(m.Side1) > 0 && m.Side1[0] == champ {
-					s1 += " (c)"
-				}
-				if len(m.Side2) > 0 && m.Side2[0] == champ {
-					s2 += " (c)"
-				}
-			}
-			// Mark rivals
-			isFeud := len(m.Side1) > 0 && len(m.Side2) > 0 && bs.fed.IsRival(m.Side1[0], m.Side2[0])
-			feudTag := ""
-			if isFeud {
-				feudTag = " [FEUD]"
-			}
-			line = fmt.Sprintf("[%s%s] %s vs %s%s", titleTag, typeStr, s1, s2, feudTag)
-		}
-
-		DrawText(screen, fmt.Sprintf("%s%d. %s", prefix, i+1, line), Margin, y)
+	for _, line := range bs.headerLines() {
+		DrawText(screen, line, Margin, y)
 		y += LineHeight
 	}
-
 	y += LineHeight
+	items, cursor := bs.listItems(g)
+	drawList(screen, g, y, items, cursor)
 
-	// Action options
-	actions := []string{"Watch All Matches", "Simulate All Matches", "Watch Main Event Only"}
-	for i, label := range actions {
-		idx := len(bs.card) + i
-		prefix := "  "
-		if idx == bs.cursor {
-			prefix = "> "
-		}
-		DrawText(screen, prefix+label, Margin, y)
-		y += LineHeight
-	}
-
-	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Edit/Start  [ESC] Back", Margin, statusY)
+	DrawText(screen, bs.statusLine(), Margin, g.screenH-LineHeight-Margin)
 }
 
-func (bs *CareerBookScreen) drawEditType(screen *ebiten.Image, g *Game, y int) {
-	DrawText(screen, fmt.Sprintf("EDIT MATCH %d: SELECT TYPE:", bs.editIdx+1), Margin, y)
-	y += LineHeight * 2
-
-	for i, name := range editableTypeNames {
-		prefix := "  "
-		if i == bs.editCursor {
-			prefix = "> "
+func (bs *CareerBookScreen) headerLines() []string {
+	editing := fmt.Sprintf("EDIT MATCH %d: ", bs.editIdx+1)
+	switch bs.phase {
+	case BookEditType:
+		return []string{editing + "SELECT TYPE:"}
+	case BookEditWrestlers:
+		question := setupQuestions(bs.editType)[len(bs.editPicks)]
+		if len(bs.editPicks) == 0 {
+			return []string{editing + question.prompt}
 		}
-		DrawText(screen, prefix+name, Margin, y)
-		y += LineHeight
+		return []string{editing + question.prompt, "Picked so far: " + strings.Join(bs.editPicks, ", ")}
+	case BookEditPartners:
+		question := setupQuestions(engine.MatchTag)[wrestlersNeeded(engine.MatchTag)+len(bs.editRegular)]
+		return []string{editing + question.prompt}
+	default:
+		return []string{"FIGHT CARD:"}
 	}
-
-	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Cancel", Margin, statusY)
 }
 
-func (bs *CareerBookScreen) drawEditSide(screen *ebiten.Image, g *Game, y int, label string) {
-	DrawText(screen, fmt.Sprintf("EDIT MATCH %d: SELECT %s:", bs.editIdx+1, label), Margin, y)
-	y += LineHeight * 2
+func (bs *CareerBookScreen) listItems(g *Game) ([]string, int) {
+	switch bs.phase {
+	case BookEditType:
+		return editableTypeNames, bs.editCursor
+	case BookEditWrestlers:
+		return bs.wrestlerChoices(g), bs.editCursor
+	case BookEditPartners:
+		return regularPartnerChoices, bs.editCursor
+	default:
+		return bs.cardLines(g), bs.cursor
+	}
+}
 
-	for i, card := range bs.roster {
-		prefix := "  "
-		if i == bs.editCursor {
-			prefix = "> "
+func (bs *CareerBookScreen) wrestlerChoices(g *Game) []string {
+	choices := make([]string, len(bs.roster))
+	for i, w := range bs.roster {
+		choices[i] = w.Name + statusMarkers(g, w.Name)
+		if reason := bs.blockedReason(g, w.Name); reason != "" && reason != "suspended" {
+			choices[i] += "  (" + reason + ")"
 		}
-		name := card.Name
-		if g.Injuries.IsInjured(card.Name) {
-			name += fmt.Sprintf("  [INJURED %d]", g.Injuries.InjuryCards(card.Name))
-		}
-		DrawText(screen, prefix+name, Margin, y)
-		y += LineHeight
+	}
+	return choices
+}
+
+func (bs *CareerBookScreen) cardLines(g *Game) []string {
+	lines := make([]string, 0, len(bs.card)+len(showActions))
+	for i, match := range bs.card {
+		lines = append(lines, fmt.Sprintf("%d. %s", i+1, bookedMatchLine(bs.fed, g, match)))
+	}
+	for _, action := range showActions {
+		lines = append(lines, action.label)
+	}
+	return lines
+}
+
+func (bs *CareerBookScreen) statusLine() string {
+	if bs.phase == BookViewCard {
+		return "[UP/DOWN] Select  [ENTER] Edit/Start  [ESC] Back  (* injured, (c) champion)"
+	}
+	return "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Cancel"
+}
+
+// bookedMatchLine describes one match on the card.
+func bookedMatchLine(fed *engine.Federation, g *Game, match engine.BookedMatch) string {
+	title := ""
+	if match.IsTitle && match.TitleIndex >= 0 && match.TitleIndex < len(fed.Championships) {
+		title = fed.Championships[match.TitleIndex].Name
+	}
+	switch {
+	case len(match.BREntrants) > 0:
+		return fmt.Sprintf("[BATTLE ROYAL] %d-man Battle Royal", len(match.BREntrants))
+	case match.IsTournament && title != "":
+		return fmt.Sprintf("[%s TOURNAMENT] %d-man Tournament", title, match.TournSize)
+	case match.IsTournament:
+		return fmt.Sprintf("[TOURNAMENT] %d-man Tournament", match.TournSize)
 	}
 
-	statusY := g.screenH - LineHeight - Margin
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Cancel", Margin, statusY)
+	champion := ""
+	if title != "" {
+		champion = fed.ChampionOf(match.TitleIndex)
+		title += " - "
+	}
+	feud := ""
+	if match.Type != engine.MatchTag && len(match.Side1) > 0 && len(match.Side2) > 0 && fed.IsRival(match.Side1[0], match.Side2[0]) {
+		feud = " [FEUD]"
+	}
+	return fmt.Sprintf("[%s%s] %s vs %s%s", title, engine.MatchTypeString(match.Type),
+		sideText(g, match.Side1, champion), sideText(g, match.Side2, champion), feud)
+}
+
+func sideText(g *Game, names []string, champion string) string {
+	if len(names) == 0 {
+		return "TBD"
+	}
+	marked := make([]string, len(names))
+	for i, name := range names {
+		marked[i] = name
+		if g.Injuries.IsInjured(name) {
+			marked[i] += "*"
+		}
+		if champion != "" && name == champion {
+			marked[i] += " (c)"
+		}
+	}
+	return strings.Join(marked, " & ")
 }

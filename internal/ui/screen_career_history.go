@@ -142,20 +142,7 @@ func (h *CareerHistoryScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 
 	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := h.scroll
-	if startLine >= len(h.lines) {
-		startLine = len(h.lines) - 1
-	}
-	if startLine < 0 {
-		startLine = 0
-	}
-
-	y := Margin
-	for i := startLine; i < len(h.lines) && y < statusBarY; i++ {
-		DrawText(screen, h.lines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, h.lines, h.scroll, g.screenH)
 
 	tabStr := "[TAB] Switch to Title History"
 	if h.tab == HistoryTabTitle {

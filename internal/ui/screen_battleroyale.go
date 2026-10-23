@@ -70,6 +70,9 @@ func (b *BattleRoyalScreen) Update(g *Game) error {
 		b.updateMatch(g)
 		return nil
 	}
+	if b.phase == BRMatchResult {
+		b.scroll = scrollWithKeys(g.in, b.scroll, b.maxScroll(g))
+	}
 	if !confirmPressed(g.in) {
 		return nil
 	}
@@ -299,14 +302,7 @@ func (b *BattleRoyalScreen) drawStandings(screen *ebiten.Image, g *Game) {
 
 func (b *BattleRoyalScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := max(min(b.scroll, len(b.lines)-1), 0)
-
-	y := Margin
-	for i := startLine; i < len(b.lines) && y < statusBarY; i++ {
-		DrawText(screen, b.lines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, b.lines, b.scroll, g.screenH)
 
 	var status string
 	if b.phase == BRMatchResult {

@@ -90,6 +90,7 @@ func (t *TournamentScreen) Update(g *Game) error {
 	case TournRunningMatch:
 		t.updateRunningMatch(g)
 	case TournMatchResult:
+		t.scroll = scrollWithKeys(g.in, t.scroll, t.maxScroll(g))
 		if confirmPressed(g.in) {
 			t.advanceToNext(g)
 		}
@@ -670,20 +671,7 @@ func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {
 	}
 
 	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := t.bracketScroll
-	if startLine >= len(t.bracketLines) {
-		startLine = len(t.bracketLines) - 1
-	}
-	if startLine < 0 {
-		startLine = 0
-	}
-
-	y := Margin
-	for i := startLine; i < len(t.bracketLines) && y < statusBarY; i++ {
-		DrawText(screen, t.bracketLines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, t.bracketLines, t.bracketScroll, g.screenH)
 
 	var status string
 	if t.phase == TournFinished {
@@ -700,14 +688,7 @@ func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {
 
 func (t *TournamentScreen) drawRunningMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := max(min(t.scroll, len(t.lines)-1), 0)
-
-	y := Margin
-	for i := startLine; i < len(t.lines) && y < statusBarY; i++ {
-		DrawText(screen, t.lines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, t.lines, t.scroll, g.screenH)
 
 	var status string
 	if t.phase == TournMatchResult {

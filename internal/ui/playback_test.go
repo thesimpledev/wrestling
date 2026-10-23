@@ -180,6 +180,53 @@ func TestBattleRoyalLastEventFinishesMatch(t *testing.T) {
 	}
 }
 
+// resultScreens put each screen on its match result with 30 lines of
+// commentary scrolled to the bottom (line 10 with the default 20-line view).
+var resultScreens = []struct {
+	name  string
+	build func(t *testing.T, g *Game) *int
+}{
+	{"tournament", func(_ *testing.T, g *Game) *int {
+		ts := newBracket(4)
+		ts.phase = TournMatchResult
+		ts.lines, ts.scroll = make([]string, 30), 10
+		g.SetScreen(ts)
+		return &ts.scroll
+	}},
+	{"battle royal", func(_ *testing.T, g *Game) *int {
+		br := NewBattleRoyalScreen(g.Roster, g)
+		br.phase = BRMatchResult
+		br.lines, br.scroll = make([]string, 30), 10
+		g.SetScreen(br)
+		return &br.scroll
+	}},
+	{"career show", func(_ *testing.T, g *Game) *int {
+		fed := &engine.Federation{Records: map[string]*engine.WrestlerRecord{}}
+		save := &engine.FederationSave{Federations: []*engine.Federation{fed}}
+		show := NewCareerShowScreen(fed, save, []engine.BookedMatch{{Type: engine.MatchSingles, Side1: []string{"A"}, Side2: []string{"B"}}}, ShowModeWatch, g)
+		show.phase = ShowMatchResult
+		show.lines, show.scroll = make([]string, 30), 10
+		g.SetScreen(show)
+		return &show.scroll
+	}},
+}
+
+func TestMatchResultScrolls(t *testing.T) {
+	for _, rs := range resultScreens {
+		g, in := testGame("A", "B", "C")
+		scroll := rs.build(t, g)
+		press(t, g, in, ebiten.KeyUp)
+		if *scroll != 9 {
+			t.Errorf("%s: up from the bottom: scroll %d, want 9", rs.name, *scroll)
+		}
+		press(t, g, in, ebiten.KeyDown)
+		press(t, g, in, ebiten.KeyDown)
+		if *scroll != 10 {
+			t.Errorf("%s: down past the bottom: scroll %d, want 10", rs.name, *scroll)
+		}
+	}
+}
+
 func TestAdjustSpeed(t *testing.T) {
 	in := &fakeInput{}
 	in.set([]ebiten.Key{ebiten.KeyEqual}, "")

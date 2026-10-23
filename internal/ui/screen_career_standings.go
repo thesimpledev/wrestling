@@ -158,20 +158,7 @@ func (s *CareerStandingsScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 
 	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := s.scroll
-	if startLine >= len(s.lines) {
-		startLine = len(s.lines) - 1
-	}
-	if startLine < 0 {
-		startLine = 0
-	}
-
-	y := Margin
-	for i := startLine; i < len(s.lines) && y < statusBarY; i++ {
-		DrawText(screen, s.lines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, s.lines, s.scroll, g.screenH)
 
 	DrawText(screen, "[UP/DOWN] Scroll  [ESC] Back", Margin, statusBarY)
 }

@@ -503,6 +503,8 @@ func (cs *CareerShowScreen) Update(g *Game) error {
 		cs.updateRunning(g)
 	case confirmPressed(g.in):
 		cs.nextMatch(g)
+	default:
+		cs.scroll = scrollWithKeys(g.in, cs.scroll, cs.maxScroll(g))
 	}
 	return nil
 }
@@ -623,14 +625,7 @@ func drawLines(screen *ebiten.Image, lines []string) {
 
 func (cs *CareerShowScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := max(min(cs.scroll, len(cs.lines)-1), 0)
-
-	y := Margin
-	for i := startLine; i < len(cs.lines) && y < statusBarY; i++ {
-		DrawText(screen, cs.lines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, cs.lines, cs.scroll, g.screenH)
 	DrawText(screen, cs.statusLine(), Margin, statusBarY)
 }
 

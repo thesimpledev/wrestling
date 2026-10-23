@@ -186,15 +186,7 @@ func (ms *MatchScreen) rematch(g *Game) *MatchScreen {
 func (ms *MatchScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 
-	statusBarY := g.screenH - LineHeight - Margin
-
-	startLine := max(min(ms.scroll, len(ms.lines)-1), 0)
-
-	y := Margin
-	for i := startLine; i < len(ms.lines) && y < statusBarY; i++ {
-		DrawText(screen, ms.lines[i], Margin, y)
-		y += LineHeight
-	}
+	drawScrolledLines(screen, ms.lines, ms.scroll, g.screenH)
 
 	// Status bar
 	status := "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Menu"

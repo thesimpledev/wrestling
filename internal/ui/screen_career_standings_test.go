@@ -2,6 +2,7 @@ package ui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"wrestling/internal/engine"
@@ -56,6 +57,25 @@ func TestStandingsWithoutRivalriesHasNoRivalrySection(t *testing.T) {
 	s := NewCareerStandingsScreen(fed, nil)
 	if last := s.lines[len(s.lines)-1]; last != " 3   Rookie                    0    0    0          0" {
 		t.Fatalf("last line: got %q, want the last record row", last)
+	}
+}
+
+func TestStandingsBreaksFullTiesOnName(t *testing.T) {
+	fed := &engine.Federation{Records: map[string]*engine.WrestlerRecord{
+		"Delta": {Wins: 2, Losses: 1},
+		"Alpha": {Wins: 2, Losses: 1},
+		"Charlie": {Wins: 2, Losses: 1},
+		"Bravo": {Wins: 2, Losses: 1},
+	}}
+	want := []string{"Alpha", "Bravo", "Charlie", "Delta"}
+	// Map order changes from run to run, so check the order many times.
+	for range 50 {
+		s := NewCareerStandingsScreen(fed, nil)
+		for i, name := range want {
+			if got := s.lines[7+i]; !strings.Contains(got, " "+name+" ") {
+				t.Fatalf("row %d: got %q, want %s", i+1, got, name)
+			}
+		}
 	}
 }
 

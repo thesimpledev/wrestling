@@ -53,7 +53,8 @@ type standingsEntry struct {
 	pct  float64
 }
 
-// rankedRecords orders wrestlers by win rate, then by number of wins.
+// rankedRecords orders wrestlers by win rate, then by number of wins, then
+// by name.
 func (s *CareerStandingsScreen) rankedRecords() []standingsEntry {
 	entries := make([]standingsEntry, 0, len(s.fed.Records))
 	for name, rec := range s.fed.Records {
@@ -68,7 +69,10 @@ func (s *CareerStandingsScreen) rankedRecords() []standingsEntry {
 		if entries[i].pct != entries[j].pct {
 			return entries[i].pct > entries[j].pct
 		}
-		return entries[i].rec.Wins > entries[j].rec.Wins
+		if entries[i].rec.Wins != entries[j].rec.Wins {
+			return entries[i].rec.Wins > entries[j].rec.Wins
+		}
+		return entries[i].name < entries[j].name
 	})
 	return entries
 }

@@ -150,48 +150,27 @@ func (b *BattleRoyalScreen) updateMatch(g *Game) {
 	if g.in.JustPressed(ebiten.KeyA) {
 		b.autoPlay = !b.autoPlay
 	}
-	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
-		if b.speed > 5 {
-			b.speed -= 5
-		}
-	}
-	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
-		b.speed += 5
-	}
+	b.speed = adjustSpeed(g.in, b.speed)
+	b.scroll = scrollWithKeys(g.in, b.scroll, b.maxScroll(g))
 
-	if g.in.Pressed(ebiten.KeyUp) {
-		if b.scroll > 0 {
-			b.scroll--
-		}
+	var due bool
+	due, b.ticker = stepDue(g.in, b.autoPlay, b.ticker, b.speed)
+	if due {
+		b.showNextEvent(g)
 	}
-	if g.in.Pressed(ebiten.KeyDown) {
-		max := b.maxScroll(g)
-		if b.scroll < max {
-			b.scroll++
-		}
-	}
+}
 
-	advance := false
-	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-		advance = true
+// showNextEvent adds the next match event to the commentary and finishes
+// the round after the last one.
+func (b *BattleRoyalScreen) showNextEvent(g *Game) {
+	if b.shown >= len(b.events) {
+		return
 	}
-	if b.autoPlay {
-		b.ticker++
-		if b.ticker >= b.speed {
-			b.ticker = 0
-			advance = true
-		}
-	}
-
-	if advance && b.shown < len(b.events) {
-		e := b.events[b.shown]
-		b.lines = append(b.lines, e.Text)
-		b.shown++
-		b.scrollToBottom(g)
-
-		if b.shown >= len(b.events) {
-			b.finishSubMatch(g)
-		}
+	b.lines = append(b.lines, b.events[b.shown].Text)
+	b.shown++
+	b.scrollToBottom(g)
+	if b.shown >= len(b.events) {
+		b.finishSubMatch(g)
 	}
 }
 

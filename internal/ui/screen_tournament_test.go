@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,23 +33,120 @@ func TestBracketAdvancement(tt *testing.T) {
 		for i := range ts.seeds {
 			ts.seeds[i] = fakeCard(fmt.Sprintf("W%02d", i))
 		}
-		// Always advance the first wrestler of each matchup
 		for r := 0; r < ts.totalRounds; r++ {
-			for m := 0; m < size/(1<<(r+1)); m++ {
-				w1, w2 := ts.getMatchup(r, m)
-				if w1 == nil || w2 == nil {
-					tt.Fatalf("size %d round %d match %d: nil matchup", size, r, m)
-				}
-				if w1 == w2 {
-					tt.Fatalf("size %d round %d match %d: wrestler faces themselves", size, r, m)
-				}
-				ts.results[r][m] = w1
-			}
+			advanceFirstSeeds(tt, ts, r)
 		}
 		champ := ts.results[ts.totalRounds-1][0]
 		if champ == nil || champ.Name != "W00" {
 			tt.Fatalf("size %d: wrong champion %v", size, champ)
 		}
+	}
+}
+
+// advanceFirstSeeds plays a round in which the first wrestler of every
+// matchup wins, checking each matchup has two different wrestlers.
+func advanceFirstSeeds(tt *testing.T, ts *TournamentScreen, round int) {
+	tt.Helper()
+	for m := range ts.results[round] {
+		w1, w2 := ts.getMatchup(round, m)
+		if w1 == nil || w2 == nil {
+			tt.Fatalf("size %d round %d match %d: nil matchup", ts.bracketSize, round, m)
+		}
+		if w1 == w2 {
+			tt.Fatalf("size %d round %d match %d: wrestler faces themselves", ts.bracketSize, round, m)
+		}
+		ts.results[round][m] = w1
+	}
+}
+
+func TestRenderBracketLayout(tt *testing.T) {
+	ts := newBracket(8)
+	for i := range ts.seeds {
+		ts.seeds[i] = fakeCard(fmt.Sprintf("Wrestler Number %d Long", i))
+	}
+	ts.seeds[5] = nil
+	ts.results[0][0] = ts.seeds[1]
+	ts.results[0][1] = ts.seeds[2]
+	ts.results[1][0] = ts.seeds[2]
+	ts.currentMatch = 2
+	want := []string{
+		"  [ 1] Wrestler Numbe.  ---+                                                              ",
+		"                         Wrestler Number 1.   ---+                                        ",
+		"  [ 2] Wrestler Numbe.  ---+                     |                                        ",
+		"                                               Wrestler Number 2.   ---+                  ",
+		"  [ 3] Wrestler Numbe.  ---+                     |                     |                  ",
+		"                         Wrestler Number 2.   ---+                     |                  ",
+		"  [ 4] Wrestler Numbe.  ---+                                           |                  ",
+		"                                                                     ???                  ",
+		"  [ 5] Wrestler Numbe.  ---+                                           |                  ",
+		"                        >???                  ---+                     |                  ",
+		"  [ 6] ???              ---+                     |                     |                  ",
+		"                                               ???                  ---+                  ",
+		"  [ 7] Wrestler Numbe.  ---+                     |                                        ",
+		"                         ???                  ---+                                        ",
+		"  [ 8] Wrestler Numbe.  ---+                                                              ",
+	}
+	if got := ts.renderBracket(); !reflect.DeepEqual(got, want) {
+		tt.Fatalf("bracket:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestFillBracketLines(tt *testing.T) {
+	ts := newBracket(8)
+	ts.roster = []*engine.WrestlerCard{fakeCard("A"), fakeCard("B"), fakeCard("C")}
+	ts.seeds[0] = ts.roster[1]
+	ts.fillCursor = 1
+	ts.rosterCursor = 1
+	want := []string{
+		"============================================================",
+		"                  FILL TOURNAMENT BRACKET",
+		"============================================================",
+		"",
+		"Filling seed 2 of 8:",
+		"     [ 1] B",
+		"  >> [ 2] (empty)",
+		"     [ 3] (empty)",
+		"     [ 4] (empty)",
+		"     [ 5] (empty)",
+		"     [ 6] (empty)",
+		"     ...",
+		"",
+		"SELECT WRESTLER:",
+		"  A",
+		"> B  (already seeded)",
+		"  C",
+		"  [Auto-Fill Remaining]",
+	}
+	if got := ts.fillBracketLines(600); !reflect.DeepEqual(got, want) {
+		tt.Fatalf("fill lines:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestFillBracketLinesScrollWindows(tt *testing.T) {
+	ts := newBracket(8)
+	ts.roster = []*engine.WrestlerCard{fakeCard("A"), fakeCard("B"), fakeCard("C")}
+	ts.fillCursor = 7
+	ts.rosterCursor = 3
+	// Room for exactly two roster rows below the 14 lines above them.
+	screenH := 17*LineHeight + 2*Margin
+	got := ts.fillBracketLines(screenH)
+	if got[5] != "     ..." || got[6] != "     [ 3] (empty)" || got[11] != "  >> [ 8] (empty)" {
+		tt.Fatalf("seed window: got %q", got[5:12])
+	}
+	tail := got[len(got)-3:]
+	want := []string{"SELECT WRESTLER:", "  C", "> [Auto-Fill Remaining]"}
+	if !reflect.DeepEqual(tail, want) {
+		tt.Fatalf("roster window: got %q want %q", tail, want)
+	}
+}
+
+func TestFillBracketLinesShowsOneRosterRowWithNoRoom(tt *testing.T) {
+	ts := newBracket(4)
+	ts.roster = []*engine.WrestlerCard{fakeCard("A"), fakeCard("B")}
+	ts.rosterCursor = 1
+	got := ts.fillBracketLines(0)
+	if last := got[len(got)-1]; last != "> B" || got[len(got)-2] != "SELECT WRESTLER:" {
+		tt.Fatalf("got %q, want only the cursor row", got)
 	}
 }
 

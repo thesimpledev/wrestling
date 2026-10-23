@@ -22,44 +22,47 @@ func NewCareerStandingsScreen(fed *engine.Federation, save *engine.FederationSav
 }
 
 func (s *CareerStandingsScreen) buildLines() {
-	var lines []string
-	lines = append(lines, "============================================================")
-	lines = append(lines, "                  STANDINGS & RECORDS")
-	lines = append(lines, "============================================================")
+	lines := []string{
+		"============================================================",
+		"                  STANDINGS & RECORDS",
+		"============================================================",
+		"",
+	}
+	lines = append(lines, s.championshipLines()...)
 	lines = append(lines, "")
+	lines = append(lines, s.recordLines()...)
+	lines = append(lines, s.rivalryLines()...)
+	s.lines = lines
+}
 
-	// Show all championships
+func (s *CareerStandingsScreen) championshipLines() []string {
+	lines := make([]string, 0, len(s.fed.Championships))
 	for _, ch := range s.fed.Championships {
-		if ch.Champion == "" {
-			lines = append(lines, fmt.Sprintf("  %s: VACANT", ch.Name))
-		} else {
-			lines = append(lines, fmt.Sprintf("  %s: %s", ch.Name, ch.Champion))
+		holder := ch.Champion
+		if holder == "" {
+			holder = "VACANT"
 		}
+		lines = append(lines, fmt.Sprintf("  %s: %s", ch.Name, holder))
 	}
-	lines = append(lines, "")
+	return lines
+}
 
-	// Collect all champion names for marking
-	champSet := make(map[string]bool)
-	for _, ch := range s.fed.Championships {
-		if ch.Champion != "" {
-			champSet[ch.Champion] = true
-		}
-	}
+type standingsEntry struct {
+	name string
+	rec  *engine.WrestlerRecord
+	pct  float64
+}
 
-	// Build ranked list
-	type entry struct {
-		name string
-		rec  *engine.WrestlerRecord
-		pct  float64
-	}
-	var entries []entry
+// rankedRecords orders wrestlers by win rate, then by number of wins.
+func (s *CareerStandingsScreen) rankedRecords() []standingsEntry {
+	entries := make([]standingsEntry, 0, len(s.fed.Records))
 	for name, rec := range s.fed.Records {
 		total := rec.Wins + rec.Losses + rec.Draws
 		pct := 0.0
 		if total > 0 {
 			pct = float64(rec.Wins) / float64(total)
 		}
-		entries = append(entries, entry{name, rec, pct})
+		entries = append(entries, standingsEntry{name, rec, pct})
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].pct != entries[j].pct {
@@ -67,44 +70,60 @@ func (s *CareerStandingsScreen) buildLines() {
 		}
 		return entries[i].rec.Wins > entries[j].rec.Wins
 	})
+	return entries
+}
 
-	lines = append(lines, fmt.Sprintf(" %-3s %-22s %4s %4s %4s  %-7s %s",
-		"#", "Name", "W", "L", "D", "Streak", "Titles"))
-	lines = append(lines, " -----------------------------------------------------------")
-
-	for i, e := range entries {
-		nameStr := e.name
-		if champSet[e.name] {
-			nameStr += " (c)"
+// recordLines is the ranked table of win-loss records, with current
+// champions marked (c).
+func (s *CareerStandingsScreen) recordLines() []string {
+	champions := make(map[string]bool)
+	for _, ch := range s.fed.Championships {
+		if ch.Champion != "" {
+			champions[ch.Champion] = true
 		}
-		if len(nameStr) > 22 {
-			nameStr = nameStr[:22]
-		}
+	}
 
-		streak := ""
-		if e.rec.CurrentStreak > 0 {
-			streak = fmt.Sprintf("W%d", e.rec.CurrentStreak)
-		} else if e.rec.CurrentStreak < 0 {
-			streak = fmt.Sprintf("L%d", -e.rec.CurrentStreak)
+	lines := []string{
+		fmt.Sprintf(" %-3s %-22s %4s %4s %4s  %-7s %s", "#", "Name", "W", "L", "D", "Streak", "Titles"),
+		" -----------------------------------------------------------",
+	}
+	for i, e := range s.rankedRecords() {
+		name := e.name
+		if champions[e.name] {
+			name += " (c)"
 		}
-
+		if len(name) > 22 {
+			name = name[:22]
+		}
 		lines = append(lines, fmt.Sprintf(" %-3d %-22s %4d %4d %4d  %-7s %d",
-			i+1, nameStr, e.rec.Wins, e.rec.Losses, e.rec.Draws, streak, e.rec.TitleReigns))
+			i+1, name, e.rec.Wins, e.rec.Losses, e.rec.Draws, streakLabel(e.rec.CurrentStreak), e.rec.TitleReigns))
 	}
+	return lines
+}
 
-	// Active rivalries
+// streakLabel shows a winning streak as W<n> and a losing one as L<n>.
+func streakLabel(streak int) string {
+	switch {
+	case streak > 0:
+		return fmt.Sprintf("W%d", streak)
+	case streak < 0:
+		return fmt.Sprintf("L%d", -streak)
+	default:
+		return ""
+	}
+}
+
+func (s *CareerStandingsScreen) rivalryLines() []string {
 	rivals := s.fed.ActiveRivals()
-	if len(rivals) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "ACTIVE RIVALRIES:")
-		lines = append(lines, "")
-		for _, pair := range rivals {
-			score := s.fed.RivalryScore(pair[0], pair[1])
-			lines = append(lines, fmt.Sprintf("  %s vs %s (intensity: %d)", pair[0], pair[1], score))
-		}
+	if len(rivals) == 0 {
+		return nil
 	}
-
-	s.lines = lines
+	lines := []string{"", "ACTIVE RIVALRIES:", ""}
+	for _, pair := range rivals {
+		score := s.fed.RivalryScore(pair[0], pair[1])
+		lines = append(lines, fmt.Sprintf("  %s vs %s (intensity: %d)", pair[0], pair[1], score))
+	}
+	return lines
 }
 
 func (s *CareerStandingsScreen) Update(g *Game) error {

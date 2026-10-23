@@ -51,16 +51,6 @@ func newEvent(typ EventType, format string, args ...any) Event {
 	}
 }
 
-func moveEvent(attacker, defender, moveName string, power, level int) Event {
-	return Event{
-		Type:     EventMove,
-		Text:     fmt.Sprintf("%s hits %s with a %s!", attacker, defender, moveName),
-		Attacker: attacker,
-		Defender: defender,
-		Level:    level,
-	}
-}
-
 func defenseEvent(wrestler string, outcome DefenseType) Event {
 	return Event{
 		Type:     EventDefense,

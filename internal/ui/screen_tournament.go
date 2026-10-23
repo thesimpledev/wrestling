@@ -320,48 +320,27 @@ func (t *TournamentScreen) updateRunningMatch(g *Game) {
 	if g.in.JustPressed(ebiten.KeyA) {
 		t.autoPlay = !t.autoPlay
 	}
-	if g.in.JustPressed(ebiten.KeyEqual) || g.in.JustPressed(ebiten.KeyNumpadAdd) {
-		if t.speed > 5 {
-			t.speed -= 5
-		}
-	}
-	if g.in.JustPressed(ebiten.KeyMinus) || g.in.JustPressed(ebiten.KeyNumpadSubtract) {
-		t.speed += 5
-	}
+	t.speed = adjustSpeed(g.in, t.speed)
+	t.scroll = scrollWithKeys(g.in, t.scroll, t.maxScroll(g))
 
-	if g.in.Pressed(ebiten.KeyUp) {
-		if t.scroll > 0 {
-			t.scroll--
-		}
+	var due bool
+	due, t.ticker = stepDue(g.in, t.autoPlay, t.ticker, t.speed)
+	if due {
+		t.showNextEvent(g)
 	}
-	if g.in.Pressed(ebiten.KeyDown) {
-		max := t.maxScroll(g)
-		if t.scroll < max {
-			t.scroll++
-		}
-	}
+}
 
-	advance := false
-	if g.in.JustPressed(ebiten.KeySpace) || g.in.JustPressed(ebiten.KeyEnter) {
-		advance = true
+// showNextEvent adds the next match event to the commentary and finishes
+// the match after the last one.
+func (t *TournamentScreen) showNextEvent(g *Game) {
+	if t.shown >= len(t.events) {
+		return
 	}
-	if t.autoPlay {
-		t.ticker++
-		if t.ticker >= t.speed {
-			t.ticker = 0
-			advance = true
-		}
-	}
-
-	if advance && t.shown < len(t.events) {
-		e := t.events[t.shown]
-		t.lines = append(t.lines, e.Text)
-		t.shown++
-		t.scrollToBottom(g)
-
-		if t.shown >= len(t.events) {
-			t.finishSubMatch(g)
-		}
+	t.lines = append(t.lines, t.events[t.shown].Text)
+	t.shown++
+	t.scrollToBottom(g)
+	if t.shown >= len(t.events) {
+		t.finishSubMatch(g)
 	}
 }
 
@@ -465,84 +444,70 @@ func (t *TournamentScreen) buildBracketLines() {
 	t.bracketLines = lines
 }
 
+const bracketNameWidth = 20
+
+// renderBracket draws the bracket as text: seeds in the first column, each
+// round's winners in the columns after it, joined by connector lines.
 func (t *TournamentScreen) renderBracket() []string {
-	// For each seed slot, build a line-based bracket representation
-	// Use a column-based approach where each round adds connectors
-
-	nameWidth := 20
-
-	// Calculate total height: bracketSize lines for seeds + spacing
-	totalSlots := t.bracketSize
-	height := totalSlots * 2
-
-	// Build grid of characters
-	cols := t.totalRounds + 1
-	grid := make([][]string, height)
-	for i := range grid {
-		grid[i] = make([]string, cols)
-		for j := range grid[i] {
-			grid[i][j] = ""
-		}
-	}
-
-	// Column 0: seeds
-	for i := 0; i < totalSlots; i++ {
-		row := i * 2
-		name := "???"
-		if t.seeds[i] != nil {
-			name = truncName(t.seeds[i].Name, nameWidth-5)
-		}
-		grid[row][0] = fmt.Sprintf("[%2d] %-*s", i+1, nameWidth-5, name)
-	}
-
-	// Subsequent columns: round results
-	for r := 0; r < t.totalRounds; r++ {
-		matchesInRound := totalSlots / (1 << (r + 1))
-		spacing := 1 << (r + 1)
-		for m := 0; m < matchesInRound; m++ {
-			row := m*spacing*2 + spacing - 1
-			if row >= height {
-				row = height - 1
-			}
-			winner := t.results[r][m]
-			name := "???"
-			if winner != nil {
-				name = truncName(winner.Name, nameWidth-2)
-			}
-			// Highlight current match
-			marker := " "
-			if r == t.currentRound && m == t.currentMatch && t.currentRound < t.totalRounds {
-				marker = ">"
-			}
-			grid[row][r+1] = fmt.Sprintf("%s%-*s", marker, nameWidth-1, name)
-		}
-	}
-
-	// Convert grid to string lines with connectors
+	grid := t.bracketGrid()
+	colWidth := bracketNameWidth + 2
 	var lines []string
-	colWidth := nameWidth + 2
-
-	for row := 0; row < height; row++ {
+	for row, cells := range grid {
 		var sb strings.Builder
 		sb.WriteString("  ")
-		for col := 0; col < cols; col++ {
-			cell := grid[row][col]
+		for col, cell := range cells {
 			if cell == "" {
-				// Check if we should draw a connector
-				connector := t.getConnector(row, col, totalSlots)
-				sb.WriteString(fmt.Sprintf("%-*s", colWidth, connector))
-			} else {
-				sb.WriteString(fmt.Sprintf("%-*s", colWidth, cell))
+				cell = t.getConnector(row, col, t.bracketSize)
 			}
+			fmt.Fprintf(&sb, "%-*s", colWidth, cell)
 		}
-		line := sb.String()
-		// Only include non-empty lines
-		if strings.TrimSpace(line) != "" {
+		if line := sb.String(); strings.TrimSpace(line) != "" {
 			lines = append(lines, line)
 		}
 	}
-
 	return lines
+}
+
+// bracketGrid places the seed and winner cells, two grid rows per seed.
+// Empty cells are left for connectors.
+func (t *TournamentScreen) bracketGrid() [][]string {
+	height := t.bracketSize * 2
+	grid := make([][]string, height)
+	for i := range grid {
+		grid[i] = make([]string, t.totalRounds+1)
+	}
+	for i := 0; i < t.bracketSize; i++ {
+		grid[i*2][0] = t.seedCell(i)
+	}
+	for r := 0; r < t.totalRounds; r++ {
+		spacing := 1 << (r + 1)
+		for m := range t.results[r] {
+			row := min(m*spacing*2+spacing-1, height-1)
+			grid[row][r+1] = t.winnerCell(r, m)
+		}
+	}
+	return grid
+}
+
+func (t *TournamentScreen) seedCell(i int) string {
+	name := "???"
+	if t.seeds[i] != nil {
+		name = truncName(t.seeds[i].Name, bracketNameWidth-5)
+	}
+	return fmt.Sprintf("[%2d] %-*s", i+1, bracketNameWidth-5, name)
+}
+
+// winnerCell shows who won a match, marking the match about to be played.
+func (t *TournamentScreen) winnerCell(round, match int) string {
+	name := "???"
+	if winner := t.results[round][match]; winner != nil {
+		name = truncName(winner.Name, bracketNameWidth-2)
+	}
+	marker := " "
+	if round == t.currentRound && match == t.currentMatch && t.currentRound < t.totalRounds {
+		marker = ">"
+	}
+	return fmt.Sprintf("%s%-*s", marker, bracketNameWidth-1, name)
 }
 
 // getConnector draws the lines joining a match's two feeder entries. The
@@ -623,31 +588,43 @@ func (t *TournamentScreen) drawSelectSize(screen *ebiten.Image, g *Game) {
 }
 
 func (t *TournamentScreen) drawFillBracket(screen *ebiten.Image, g *Game) {
-	y := Margin
-	DrawText(screen, "============================================================", Margin, y)
-	y += LineHeight
-	DrawText(screen, "                  FILL TOURNAMENT BRACKET", Margin, y)
-	y += LineHeight
-	DrawText(screen, "============================================================", Margin, y)
-	y += LineHeight * 2
+	for i, line := range t.fillBracketLines(g.screenH) {
+		DrawText(screen, line, Margin, Margin+i*LineHeight)
+	}
+	statusY := g.screenH - LineHeight - Margin
+	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Back", Margin, statusY)
+}
 
-	// Show a window of seeds around the slot being filled
-	DrawText(screen, fmt.Sprintf("Filling seed %d of %d:", t.fillCursor+1, t.bracketSize), Margin, y)
-	y += LineHeight
+// fillBracketLines lays out the bracket fill screen for a screen of the
+// given height, windowing the seeds and the roster so both cursors stay visible.
+func (t *TournamentScreen) fillBracketLines(screenH int) []string {
+	lines := []string{
+		"============================================================",
+		"                  FILL TOURNAMENT BRACKET",
+		"============================================================",
+		"",
+		fmt.Sprintf("Filling seed %d of %d:", t.fillCursor+1, t.bracketSize),
+	}
+	lines = append(lines, t.seedWindowLines()...)
+	lines = append(lines, "", "SELECT WRESTLER:")
+
+	statusY := screenH - LineHeight - Margin
+	visible := max(1, (statusY-Margin-len(lines)*LineHeight)/LineHeight)
+	return append(lines, t.rosterWindowLines(visible)...)
+}
+
+// seedWindowLines lists up to six seeds around the slot being filled, with
+// a marker where more seeds are hidden above or below.
+func (t *TournamentScreen) seedWindowLines() []string {
 	const maxSeedRows = 6
-	seedStart := 0
-	if t.fillCursor >= maxSeedRows {
-		seedStart = t.fillCursor - maxSeedRows + 1
+	start := max(0, t.fillCursor-maxSeedRows+1)
+	end := min(start+maxSeedRows, t.bracketSize)
+
+	var lines []string
+	if start > 0 {
+		lines = append(lines, "     ...")
 	}
-	seedEnd := seedStart + maxSeedRows
-	if seedEnd > t.bracketSize {
-		seedEnd = t.bracketSize
-	}
-	if seedStart > 0 {
-		DrawText(screen, "     ...", Margin, y)
-		y += LineHeight
-	}
-	for i := seedStart; i < seedEnd; i++ {
+	for i := start; i < end; i++ {
 		name := "(empty)"
 		if t.seeds[i] != nil {
 			name = t.seeds[i].Name
@@ -656,46 +633,39 @@ func (t *TournamentScreen) drawFillBracket(screen *ebiten.Image, g *Game) {
 		if i == t.fillCursor {
 			marker = ">>"
 		}
-		DrawText(screen, fmt.Sprintf("  %s [%2d] %s", marker, i+1, name), Margin, y)
-		y += LineHeight
+		lines = append(lines, fmt.Sprintf("  %s [%2d] %s", marker, i+1, name))
 	}
-	if seedEnd < t.bracketSize {
-		DrawText(screen, "     ...", Margin, y)
-		y += LineHeight
+	if end < t.bracketSize {
+		lines = append(lines, "     ...")
 	}
+	return lines
+}
 
-	y += LineHeight
-	DrawText(screen, "SELECT WRESTLER:", Margin, y)
-	y += LineHeight
-
-	// Window the roster list so the cursor is always visible
-	statusY := g.screenH - LineHeight - Margin
-	visible := (statusY - y) / LineHeight
-	if visible < 1 {
-		visible = 1
-	}
+// rosterWindowLines lists the roster choices, followed by auto-fill, in a
+// window of the given number of rows that keeps the cursor visible.
+func (t *TournamentScreen) rosterWindowLines(visible int) []string {
 	listLen := len(t.roster) + 1
-	start := 0
-	if t.rosterCursor >= visible {
-		start = t.rosterCursor - visible + 1
-	}
+	start := max(0, t.rosterCursor-visible+1)
+	lines := make([]string, 0, visible)
 	for i := start; i < listLen && i < start+visible; i++ {
 		prefix := "  "
 		if i == t.rosterCursor {
 			prefix = "> "
 		}
-		label := "[Auto-Fill Remaining]"
-		if i < len(t.roster) {
-			label = t.roster[i].Name
-			if t.isSeeded(t.roster[i]) {
-				label += "  (already seeded)"
-			}
-		}
-		DrawText(screen, prefix+label, Margin, y)
-		y += LineHeight
+		lines = append(lines, prefix+t.rosterLabel(i))
 	}
+	return lines
+}
 
-	DrawText(screen, "[UP/DOWN] Select  [ENTER] Confirm  [ESC] Back", Margin, statusY)
+func (t *TournamentScreen) rosterLabel(i int) string {
+	if i >= len(t.roster) {
+		return "[Auto-Fill Remaining]"
+	}
+	label := t.roster[i].Name
+	if t.isSeeded(t.roster[i]) {
+		label += "  (already seeded)"
+	}
+	return label
 }
 
 func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {

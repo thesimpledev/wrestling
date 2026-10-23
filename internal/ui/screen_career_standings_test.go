@@ -62,10 +62,10 @@ func TestStandingsWithoutRivalriesHasNoRivalrySection(t *testing.T) {
 
 func TestStandingsBreaksFullTiesOnName(t *testing.T) {
 	fed := &engine.Federation{Records: map[string]*engine.WrestlerRecord{
-		"Delta": {Wins: 2, Losses: 1},
-		"Alpha": {Wins: 2, Losses: 1},
+		"Delta":   {Wins: 2, Losses: 1},
+		"Alpha":   {Wins: 2, Losses: 1},
 		"Charlie": {Wins: 2, Losses: 1},
-		"Bravo": {Wins: 2, Losses: 1},
+		"Bravo":   {Wins: 2, Losses: 1},
 	}}
 	want := []string{"Alpha", "Bravo", "Charlie", "Delta"}
 	// Map order changes from run to run, so check the order many times.

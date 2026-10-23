@@ -303,20 +303,20 @@ func (b *BattleRoyalScreen) drawStandings(screen *ebiten.Image, g *Game) {
 func (b *BattleRoyalScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 	drawScrolledLines(screen, b.lines, b.scroll, g.screenH)
+	DrawText(screen, b.matchStatusLine(), Margin, statusBarY)
+}
 
-	var status string
-	if b.phase == BRMatchResult {
-		if b.nextIdx >= len(b.wrestlers) {
-			status = "[SPACE] See Final Results  [ESC] Quit"
-		} else {
-			status = "[SPACE] Back to Standings  [ESC] Quit"
-		}
-	} else if b.autoPlay {
-		status = "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Quit"
-	} else {
-		status = "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Quit"
+func (b *BattleRoyalScreen) matchStatusLine() string {
+	switch {
+	case b.phase == BRMatchResult && b.nextIdx >= len(b.wrestlers):
+		return "[SPACE] See Final Results  [UP/DOWN] Scroll  [ESC] Quit"
+	case b.phase == BRMatchResult:
+		return "[SPACE] Back to Standings  [UP/DOWN] Scroll  [ESC] Quit"
+	case b.autoPlay:
+		return "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Quit"
+	default:
+		return "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Quit"
 	}
-	DrawText(screen, status, Margin, statusBarY)
 }
 
 func (b *BattleRoyalScreen) drawFinished(screen *ebiten.Image, g *Game) {

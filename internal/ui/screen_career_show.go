@@ -637,9 +637,9 @@ func (cs *CareerShowScreen) statusLine() string {
 		return "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Leave"
 	}
 	if remaining := len(cs.card) - cs.currentIdx - 1; remaining > 0 {
-		return fmt.Sprintf("[SPACE] Next Match (%d remaining)  [ESC] Leave", remaining)
+		return fmt.Sprintf("[SPACE] Next Match (%d remaining)  [UP/DOWN] Scroll  [ESC] Leave", remaining)
 	}
-	return "[SPACE] Show Results  [ESC] Leave"
+	return "[SPACE] Show Results  [UP/DOWN] Scroll  [ESC] Leave"
 }
 
 // completeLines is the results screen: it names the show and week that were

@@ -227,6 +227,65 @@ func TestMatchResultScrolls(t *testing.T) {
 	}
 }
 
+func TestTournamentMatchStatusLine(t *testing.T) {
+	ts := newBracket(4)
+	ts.phase = TournRunningMatch
+	if got := ts.matchStatusLine(); got != "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Skip" {
+		t.Errorf("running: %q", got)
+	}
+	ts.autoPlay = true
+	if got := ts.matchStatusLine(); got != "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Skip" {
+		t.Errorf("auto-play: %q", got)
+	}
+	ts.phase = TournMatchResult
+	if got := ts.matchStatusLine(); got != "[SPACE] Back to Bracket  [UP/DOWN] Scroll" {
+		t.Errorf("result: %q", got)
+	}
+}
+
+func TestBattleRoyalMatchStatusLine(t *testing.T) {
+	g, _ := testGame("A", "B", "C")
+	br := NewBattleRoyalScreen(g.Roster, g)
+	br.phase = BRRunningMatch
+	if got := br.matchStatusLine(); got != "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Quit" {
+		t.Errorf("running: %q", got)
+	}
+	br.autoPlay = true
+	if got := br.matchStatusLine(); got != "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Quit" {
+		t.Errorf("auto-play: %q", got)
+	}
+	br.phase = BRMatchResult
+	if got := br.matchStatusLine(); got != "[SPACE] Back to Standings  [UP/DOWN] Scroll  [ESC] Quit" {
+		t.Errorf("result with rounds left: %q", got)
+	}
+	br.nextIdx = len(br.wrestlers)
+	if got := br.matchStatusLine(); got != "[SPACE] See Final Results  [UP/DOWN] Scroll  [ESC] Quit" {
+		t.Errorf("last result: %q", got)
+	}
+}
+
+func TestCareerShowMatchResultStatusLine(t *testing.T) {
+	g, _ := testGame("A", "B", "C", "D")
+	fed := &engine.Federation{Records: map[string]*engine.WrestlerRecord{}}
+	save := &engine.FederationSave{Federations: []*engine.Federation{fed}}
+	single := func(a, b string) engine.BookedMatch {
+		return engine.BookedMatch{Type: engine.MatchSingles, Side1: []string{a}, Side2: []string{b}}
+	}
+	show := NewCareerShowScreen(fed, save, []engine.BookedMatch{single("A", "B"), single("C", "D")}, ShowModeWatch, g)
+	show.phase = ShowMatchResult
+	if got := show.statusLine(); got != "[SPACE] Next Match (1 remaining)  [UP/DOWN] Scroll  [ESC] Leave" {
+		t.Errorf("result with matches left: %q", got)
+	}
+	show.currentIdx = 1
+	if got := show.statusLine(); got != "[SPACE] Show Results  [UP/DOWN] Scroll  [ESC] Leave" {
+		t.Errorf("last result: %q", got)
+	}
+	show.phase = ShowRunning
+	if got := show.statusLine(); got != "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Leave" {
+		t.Errorf("running: %q", got)
+	}
+}
+
 func TestAdjustSpeed(t *testing.T) {
 	in := &fakeInput{}
 	in.set([]ebiten.Key{ebiten.KeyEqual}, "")

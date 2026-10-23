@@ -689,16 +689,18 @@ func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {
 func (t *TournamentScreen) drawRunningMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 	drawScrolledLines(screen, t.lines, t.scroll, g.screenH)
+	DrawText(screen, t.matchStatusLine(), Margin, statusBarY)
+}
 
-	var status string
-	if t.phase == TournMatchResult {
-		status = "[SPACE] Back to Bracket"
-	} else if t.autoPlay {
-		status = "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Skip"
-	} else {
-		status = "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Skip"
+func (t *TournamentScreen) matchStatusLine() string {
+	switch {
+	case t.phase == TournMatchResult:
+		return "[SPACE] Back to Bracket  [UP/DOWN] Scroll"
+	case t.autoPlay:
+		return "AUTO-PLAY ON  [A] Stop  [+/-] Speed  [ESC] Skip"
+	default:
+		return "[SPACE] Step  [A] Auto-play  [+/-] Speed  [ESC] Skip"
 	}
-	DrawText(screen, status, Margin, statusBarY)
 }
 
 // ─── SCROLL HELPERS ──────────────────────────────────────────────────────────

@@ -624,10 +624,7 @@ func drawLines(screen *ebiten.Image, lines []string) {
 func (cs *CareerShowScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 
-	startLine := min(cs.scroll, len(cs.lines)-1)
-	if startLine < 0 {
-		startLine = 0
-	}
+	startLine := max(min(cs.scroll, len(cs.lines)-1), 0)
 
 	y := Margin
 	for i := startLine; i < len(cs.lines) && y < statusBarY; i++ {

@@ -188,10 +188,7 @@ func (ms *MatchScreen) Draw(screen *ebiten.Image, g *Game) {
 
 	statusBarY := g.screenH - LineHeight - Margin
 
-	startLine := min(ms.scroll, len(ms.lines)-1)
-	if startLine < 0 {
-		startLine = 0
-	}
+	startLine := max(min(ms.scroll, len(ms.lines)-1), 0)
 
 	y := Margin
 	for i := startLine; i < len(ms.lines) && y < statusBarY; i++ {

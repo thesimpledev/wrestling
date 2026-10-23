@@ -701,10 +701,7 @@ func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {
 func (t *TournamentScreen) drawRunningMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 
-	startLine := min(t.scroll, len(t.lines)-1)
-	if startLine < 0 {
-		startLine = 0
-	}
+	startLine := max(min(t.scroll, len(t.lines)-1), 0)
 
 	y := Margin
 	for i := startLine; i < len(t.lines) && y < statusBarY; i++ {

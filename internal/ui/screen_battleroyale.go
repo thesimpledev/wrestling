@@ -300,10 +300,7 @@ func (b *BattleRoyalScreen) drawStandings(screen *ebiten.Image, g *Game) {
 func (b *BattleRoyalScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 
-	startLine := min(b.scroll, len(b.lines)-1)
-	if startLine < 0 {
-		startLine = 0
-	}
+	startLine := max(min(b.scroll, len(b.lines)-1), 0)
 
 	y := Margin
 	for i := startLine; i < len(b.lines) && y < statusBarY; i++ {

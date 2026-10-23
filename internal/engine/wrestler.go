@@ -1,5 +1,7 @@
 package engine
 
+import "slices"
+
 // Rating represents a wrestler's chart rating (A, B, or C).
 type Rating int
 
@@ -71,12 +73,7 @@ func (m Move) IsFinisher() bool {
 }
 
 func (m Move) HasTag(tag MoveTag) bool {
-	for _, t := range m.Tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.Tags, tag)
 }
 
 // DefenseType describes what happens when a defender rolls on their defense grid.
@@ -118,12 +115,7 @@ type DefenseOutcome struct {
 }
 
 func (d DefenseOutcome) HasTag(tag MoveTag) bool {
-	for _, t := range d.Tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(d.Tags, tag)
 }
 
 // Finisher represents a wrestler's finishing move details.

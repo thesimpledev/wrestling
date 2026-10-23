@@ -20,8 +20,8 @@ func cardYAMLWith(firstMove, secondMove string) string {
 	const plainDefense = `{type: "dazed", power: 1}`
 	var b strings.Builder
 	b.WriteString("name: \"Some Wrestler\"\noffense:\n")
-	for lvl := 0; lvl < 3; lvl++ {
-		for slot := 0; slot < 6; slot++ {
+	for lvl := range 3 {
+		for slot := range 6 {
 			move := plainMove
 			if lvl == 0 && slot == 0 {
 				move = firstMove
@@ -33,8 +33,8 @@ func cardYAMLWith(firstMove, secondMove string) string {
 		}
 	}
 	b.WriteString("defense:\n")
-	for lvl := 0; lvl < 3; lvl++ {
-		for slot := 0; slot < 6; slot++ {
+	for range 3 {
+		for slot := range 6 {
 			b.WriteString(gridPrefix(slot) + plainDefense + "\n")
 		}
 	}

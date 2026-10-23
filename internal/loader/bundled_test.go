@@ -47,11 +47,11 @@ func readmeExampleCard(t *testing.T) []byte {
 		t.Fatal("the README has no yaml example")
 	}
 	body := string(readme)[start+len(open):]
-	end := strings.Index(body, closing)
-	if end < 0 {
+	before, _, ok := strings.Cut(body, closing)
+	if !ok {
 		t.Fatal("the README's yaml example is not closed")
 	}
-	return []byte(body[:end])
+	return []byte(before)
 }
 
 func TestReadmeExampleCardLoadsWithoutProblems(t *testing.T) {

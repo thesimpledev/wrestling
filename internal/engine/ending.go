@@ -1,5 +1,7 @@
 package engine
 
+import "slices"
+
 const methodDoubleDQ = "double dq"
 
 // Draw reports whether the match ended with no winner.
@@ -36,10 +38,8 @@ func (m *Match) endDoubleDQ(endingRoll twoDice) {
 
 func (m *Match) sideOf(ws *WrestlerState) int {
 	for i, side := range m.Sides {
-		for _, w := range side.Wrestlers {
-			if w == ws {
-				return i
-			}
+		if slices.Contains(side.Wrestlers, ws) {
+			return i
 		}
 	}
 	return 0

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func choiceMove(key string) Move {
 
 func layeredDefense() [3][6]DefenseOutcome {
 	var grid [3][6]DefenseOutcome
-	for slot := 0; slot < 6; slot++ {
+	for slot := range 6 {
 		grid[0][slot] = DefenseOutcome{Type: DefDazed, Power: 1}
 		grid[1][slot] = DefenseOutcome{Type: DefHurt, Power: 2}
 		grid[2][slot] = DefenseOutcome{Type: DefDown, Power: 3}
@@ -28,9 +29,9 @@ func layeredDefense() [3][6]DefenseOutcome {
 }
 
 func lastMoveText(m *Match) string {
-	for i := len(m.Events) - 1; i >= 0; i-- {
-		if m.Events[i].Type == EventMove && m.Events[i].Attacker != "" {
-			return m.Events[i].Text
+	for _, v := range slices.Backward(m.Events) {
+		if v.Type == EventMove && v.Attacker != "" {
+			return v.Text
 		}
 	}
 	return ""
@@ -262,7 +263,7 @@ func TestChoicePrefersTheMoveMoreLikelyToWork(t *testing.T) {
 
 func TestTagOnlyMoveIsRerolledInSingles(t *testing.T) {
 	att, def := testCard("A"), testCard("D")
-	for slot := 0; slot < 3; slot++ {
+	for slot := range 3 {
 		att.Offense[0][slot] = taggedMove("Double Team", 2, 1, TagTagTeam)
 		att.Offense[0][slot+3] = plainMove("Solo Hit", 1, 1)
 	}
@@ -279,7 +280,7 @@ func TestTagOnlyMoveIsRerolledInSingles(t *testing.T) {
 
 func TestSinglesOnlyMoveIsRerolledInTagMatch(t *testing.T) {
 	att, def := testCard("A"), testCard("D")
-	for slot := 0; slot < 3; slot++ {
+	for slot := range 3 {
 		att.Offense[0][slot] = taggedMove("Solo Special", 2, 1, TagSingles)
 		att.Offense[0][slot+3] = plainMove("Team Hit", 1, 1)
 	}

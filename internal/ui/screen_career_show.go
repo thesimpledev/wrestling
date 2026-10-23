@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -410,10 +411,8 @@ func bookedIn(booked engine.BookedMatch, name string) bool {
 		return false
 	}
 	for _, side := range [][]string{booked.Side1, booked.Side2} {
-		for _, wrestler := range side {
-			if wrestler == name {
-				return true
-			}
+		if slices.Contains(side, name) {
+			return true
 		}
 	}
 	return false
@@ -625,10 +624,7 @@ func drawLines(screen *ebiten.Image, lines []string) {
 func (cs *CareerShowScreen) drawMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 
-	startLine := cs.scroll
-	if startLine > len(cs.lines)-1 {
-		startLine = len(cs.lines) - 1
-	}
+	startLine := min(cs.scroll, len(cs.lines)-1)
 	if startLine < 0 {
 		startLine = 0
 	}

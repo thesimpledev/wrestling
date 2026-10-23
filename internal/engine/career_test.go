@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -54,10 +55,8 @@ func titleMatchFor(card []BookedMatch, titleIndex int) (BookedMatch, bool) {
 
 func onCard(card []BookedMatch, name string) bool {
 	for _, match := range card {
-		for _, booked := range namesOn(match) {
-			if booked == name {
-				return true
-			}
+		if slices.Contains(namesOn(match), name) {
+			return true
 		}
 	}
 	return false
@@ -82,7 +81,7 @@ func TestPPVBooksATournamentForAVacantMainTitle(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("roster %d with %d belts", tc.roster, len(tc.belts)), func(t *testing.T) {
-			for attempt := 0; attempt < 20; attempt++ {
+			for range 20 {
 				fed, cards := ppvFederation(tc.roster, tc.belts...)
 				wantTitleTournamentLast(t, fed.AutoBook(cards), tc.wantSize)
 			}
@@ -106,7 +105,7 @@ func wantTitleTournamentLast(t *testing.T, card []BookedMatch, size int) {
 }
 
 func TestPPVBooksEveryTitleBeforeAnythingElse(t *testing.T) {
-	for attempt := 0; attempt < 20; attempt++ {
+	for range 20 {
 		fed, cards := ppvFederation(12, "World", "TV", "Tag")
 		fed.Championships[0].Champion = "W00"
 		fed.Championships[1].Champion = "W01"
@@ -164,7 +163,7 @@ func TestTitleShotGoesToTheWrestlerWhoEarnedItAndIsKeptUntilUsed(t *testing.T) {
 }
 
 func TestAutoBookOnlyUsesTheWrestlersItIsGiven(t *testing.T) {
-	for attempt := 0; attempt < 20; attempt++ {
+	for range 20 {
 		fed, cards := ppvFederation(9, "World", "TV")
 		fed.Championships[0].Champion = "W00"
 		fed.Championships[1].Champion = "W01"
@@ -191,7 +190,7 @@ func TestAutoBookOnlyUsesTheWrestlersItIsGiven(t *testing.T) {
 }
 
 func TestWeeklyShowHasNoTitleMatches(t *testing.T) {
-	for attempt := 0; attempt < 20; attempt++ {
+	for range 20 {
 		fed, cards := ppvFederation(10, "World")
 		fed.Week = 2
 		fed.Championships[0].Champion = "W00"

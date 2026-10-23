@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -206,12 +207,7 @@ func (t *TournamentScreen) updateFillBracket(g *Game) {
 }
 
 func (t *TournamentScreen) isSeeded(card *engine.WrestlerCard) bool {
-	for _, s := range t.seeds {
-		if s == card {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(t.seeds, card)
 }
 
 // autoFillSeeds fills empty slots from the unseeded roster without repeats,
@@ -523,7 +519,7 @@ func (t *TournamentScreen) getConnector(row, col, totalSlots int) string {
 	ps := 1 << round
 	matchesInRound := totalSlots / (1 << (round + 1))
 
-	for m := 0; m < matchesInRound; m++ {
+	for m := range matchesInRound {
 		src1 := 4*m*ps + ps - 1
 		src2 := src1 + 2*ps
 
@@ -705,10 +701,7 @@ func (t *TournamentScreen) drawBracketView(screen *ebiten.Image, g *Game) {
 func (t *TournamentScreen) drawRunningMatch(screen *ebiten.Image, g *Game) {
 	statusBarY := g.screenH - LineHeight - Margin
 
-	startLine := t.scroll
-	if startLine > len(t.lines)-1 {
-		startLine = len(t.lines) - 1
-	}
+	startLine := min(t.scroll, len(t.lines)-1)
 	if startLine < 0 {
 		startLine = 0
 	}

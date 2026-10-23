@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"wrestling/internal/engine"
@@ -53,8 +54,7 @@ func matchHistoryLines(fed *engine.Federation) []string {
 	lines = append(lines,
 		fmt.Sprintf(" %-5s %-20s %-5s %-20s %-10s %s", "Week", "Winner", "", "Loser", "Method", "Match"),
 		" ----------------------------------------------------------------------------")
-	for i := len(fed.MatchHistory) - 1; i >= 0; i-- {
-		m := fed.MatchHistory[i]
+	for _, m := range slices.Backward(fed.MatchHistory) {
 		titleTag := ""
 		if m.IsTitle {
 			titleTag = " [T]"
@@ -93,8 +93,7 @@ func championshipLines(ch engine.Championship) []string {
 	lines = append(lines,
 		fmt.Sprintf(" %-5s %-22s %-22s %s", "Week", "Winner", "Loser", "Method"),
 		" -----------------------------------------------------------")
-	for i := len(ch.History) - 1; i >= 0; i-- {
-		tc := ch.History[i]
+	for _, tc := range slices.Backward(ch.History) {
 		winner := tc.Winner
 		if winner == "" {
 			winner = "(vacated)"

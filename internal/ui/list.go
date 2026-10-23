@@ -19,10 +19,7 @@ func listWindow(cursor, total, rows int) (start, end int) {
 	if total <= rows {
 		return 0, total
 	}
-	start = cursor - rows/2
-	if start < 0 {
-		start = 0
-	}
+	start = max(cursor-rows/2, 0)
 	if start > total-rows {
 		start = total - rows
 	}

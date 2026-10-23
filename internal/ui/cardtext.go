@@ -268,7 +268,7 @@ func defensePower(kind engine.DefenseType, parts []string) (int, error) {
 
 func parseDefenseExtras(text string) ([]engine.MoveTag, error) {
 	wanted := map[engine.MoveTag]bool{}
-	for _, word := range strings.Fields(strings.ToLower(text)) {
+	for word := range strings.FieldsSeq(strings.ToLower(text)) {
 		tag := engine.MoveTag(word)
 		if tag != engine.TagTagTeam && tag != engine.TagLeave {
 			return nil, fmt.Errorf("unknown instruction %q", word)

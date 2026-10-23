@@ -27,7 +27,7 @@ func TestInitiativeUsesInjectedDice(t *testing.T) {
 
 func TestRandomDiceStayInRange(t *testing.T) {
 	d := randomDice{}
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if r := d.Roll(); r < 1 || r > 6 {
 			t.Fatalf("roll %d out of range", r)
 		}

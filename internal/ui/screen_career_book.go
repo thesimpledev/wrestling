@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -189,10 +190,8 @@ func (bs *CareerBookScreen) bookedElsewhere(name string) int {
 			continue
 		}
 		for _, names := range [][]string{match.Side1, match.Side2, match.BREntrants, match.TournSeeds} {
-			for _, booked := range names {
-				if booked == name {
-					return i + 1
-				}
+			if slices.Contains(names, name) {
+				return i + 1
 			}
 		}
 	}
@@ -202,10 +201,8 @@ func (bs *CareerBookScreen) bookedElsewhere(name string) int {
 // blockedReason says why a wrestler cannot be picked for the match being
 // edited, or returns "" when he can.
 func (bs *CareerBookScreen) blockedReason(g *Game, name string) string {
-	for _, picked := range bs.editPicks {
-		if picked == name {
-			return "already in this match"
-		}
+	if slices.Contains(bs.editPicks, name) {
+		return "already in this match"
 	}
 	if g.Injuries.IsSuspended(name) {
 		return "suspended"

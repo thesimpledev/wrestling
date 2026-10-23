@@ -398,10 +398,7 @@ func editorVisibleLines(screenH int) int {
 func (e *CardEditorScreen) Draw(screen *ebiten.Image, g *Game) {
 	screen.Fill(Background)
 
-	visibleLines := editorVisibleLines(g.screenH)
-	if visibleLines < 5 {
-		visibleLines = 5
-	}
+	visibleLines := max(editorVisibleLines(g.screenH), 5)
 	if e.cursor < e.scroll {
 		e.scroll = e.cursor
 	}
@@ -413,10 +410,7 @@ func (e *CardEditorScreen) Draw(screen *ebiten.Image, g *Game) {
 	DrawText(screen, "CARD EDITOR  [ENTER] Edit Field  [Ctrl+S] Save  [ESC] Back", Margin, y)
 	y += LineHeight * 2
 
-	endIdx := e.scroll + visibleLines
-	if endIdx > len(e.fields) {
-		endIdx = len(e.fields)
-	}
+	endIdx := min(e.scroll+visibleLines, len(e.fields))
 	for i := e.scroll; i < endIdx; i++ {
 		DrawText(screen, e.fieldLine(i), Margin, y)
 		y += LineHeight

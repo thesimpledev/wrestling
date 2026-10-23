@@ -395,7 +395,7 @@ func TestEditingAMatchBlocksPickingTheSameWrestlerTwice(t *testing.T) {
 		t.Fatalf("F was picked twice for one match: %v", book.editPicks)
 	}
 
-	for step := 0; step < 4; step++ {
+	for range 4 {
 		press(t, g, in, ebiten.KeyUp)
 	}
 	enter(t, g, in)
@@ -432,7 +432,7 @@ func TestEditingAMatchToTagTeamAsksForFourWrestlersAndPartnerStatus(t *testing.T
 	enter(t, g, in)
 	down(t, g, in, 1)
 	enter(t, g, in)
-	for pick := 0; pick < 4; pick++ {
+	for range 4 {
 		enter(t, g, in)
 	}
 	if book.phase != BookEditPartners {
@@ -537,7 +537,7 @@ func TestBattleRoyalsAndTournamentsCannotBeEdited(t *testing.T) {
 	}
 	g, in, book := bookScreen(card, []string{"World"}, "A", "B", "C", "D", "E", "F", "G", "H")
 
-	for row := 0; row < 2; row++ {
+	for row := range 2 {
 		enter(t, g, in)
 		if book.phase != BookViewCard {
 			t.Fatalf("row %d opened for editing", row+1)
@@ -651,7 +651,7 @@ func TestCreatingAFederation(t *testing.T) {
 
 	typeText(t, g, in, "Dynamite")
 	enter(t, g, in)
-	for pick := 0; pick < 4; pick++ {
+	for range 4 {
 		press(t, g, in, ebiten.KeySpace)
 		down(t, g, in, 1)
 	}

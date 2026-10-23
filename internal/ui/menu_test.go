@@ -11,7 +11,7 @@ import (
 
 func down(t *testing.T, g *Game, in *fakeInput, times int) {
 	t.Helper()
-	for i := 0; i < times; i++ {
+	for range times {
 		press(t, g, in, ebiten.KeyDown)
 	}
 }
@@ -90,7 +90,7 @@ func TestTagTeamMenuOptionStartsATagMatchAndAsksAboutPartners(t *testing.T) {
 	}
 	g, in := testGame("A", "B", "C", "D")
 	openMenuOption(t, g, in, menuTag)
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		enter(t, g, in)
 	}
 	enter(t, g, in) // team 1: regular partners (first answer is yes)

@@ -25,7 +25,7 @@ func (m *Match) rollFeudOutcome(you, opponent *WrestlerState) (*FeudOutcome, int
 	yourAlly := m.Sides[m.sideOf(you)].Ally != nil
 	theirAlly := m.Sides[m.sideOf(opponent)].Ally != nil
 
-	for attempt := 0; attempt < maxFeudRerolls; attempt++ {
+	for range maxFeudRerolls {
 		roll := m.rollTwo().total()
 		outcome := LookupFeud(roll)
 		if outcome.usableWith(yourAlly, theirAlly) {

@@ -57,7 +57,7 @@ func TestSettingsScreenEscapeReturnsToMenu(t *testing.T) {
 
 func TestMainMenuOpensSettings(t *testing.T) {
 	g, in := testGame("A", "B")
-	for i := 0; i < menuSettings; i++ {
+	for range menuSettings {
 		press(t, g, in, ebiten.KeyDown)
 	}
 	press(t, g, in, ebiten.KeyEnter)
